@@ -43,7 +43,7 @@ jobs:
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
         run: |
-          echo "$CLASPRC_JSON" > ~/.clasprc.json
+          node -e 'fs.writeFileSync(require("os").homedir() + "/.clasprc.json", process.env.CLASPRC_JSON)'
 
       # BƯỚC 6 (Giai đoạn CD - Triển khai): Đẩy toàn bộ code trong thư mục src/
       # lên thẳng dự án Google Apps Script của bạn!
