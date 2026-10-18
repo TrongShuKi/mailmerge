@@ -45,7 +45,25 @@ jobs:
         run: |
           node -e 'fs.writeFileSync(require("os").homedir() + "/.clasprc.json", process.env.CLASPRC_JSON)'
 
-      # BƯỚC 6 (Giai đoạn CD - Triển khai): Đẩy toàn bộ code trong thư mục src/
+      # BƯỚC 6: Khởi tạo tệp .clasp.json từ tệp mẫu .clasp.json.example và Secret SCRIPT_ID
+      - name: 6. Khởi tạo cấu hình .clasp.json từ Template
+        env:
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const scriptId = process.env.SCRIPT_ID;
+            if (!scriptId) {
+              console.error("LỖI: Chưa cấu hình Secret SCRIPT_ID trên GitHub Repository Settings!");
+              process.exit(1);
+            }
+            let tpl = fs.readFileSync(".clasp.json.example", "utf8");
+            tpl = tpl.replace("<SCRIPT_ID>", scriptId.trim());
+            fs.writeFileSync(".clasp.json", tpl);
+            console.log("Đã khởi tạo .clasp.json thành công từ SCRIPT_ID!");
+          '
+
+      # BƯỚC 7 (Giai đoạn CD - Triển khai): Đẩy toàn bộ code trong thư mục src/
       # lên thẳng dự án Google Apps Script của bạn!
-      - name: 6. Đẩy mã nguồn lên Google Apps Script
+      - name: 7. Đẩy mã nguồn lên Google Apps Script
         run: npx clasp push --force
