@@ -1,0 +1,9 @@
+# Thư viện Node.js
+node_modules/
+
+# Tệp chứa khóa đăng nhập Google (Tuyệt đối bảo mật)
+.clasprc.json
+
+# Tệp hệ thống và nhật ký
+*.log
+.DS_Store

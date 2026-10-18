@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: Arial, sans-serif; padding: 15px 25px; color: #333; line-height: 1.6; background-color: #fcfcfc;}
+      h2 { color: #1a73e8; margin-top: 0; text-align: center; font-size: 22px;}
+      h3 { color: #0F9D58; margin-bottom: 8px; font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 5px;}
+      ul { margin-top: 0; padding-left: 20px; }
+      li { margin-bottom: 8px; }
+      .highlight { background-color: #fce8e6; color: #d93025; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold;}
+    </style>
+  </head>
+  <body>
+    <h2>Chào mừng bạn đến với công cụ Mail Merge!</h2>
+    <p>Dưới đây là 3 bước để cấu hình và gửi hàng loạt email tự động:</p>
+
+    <h3>1. Chuẩn bị Bản nháp (Draft) trong Gmail</h3>
+    <ul>
+      <li>Mở Gmail của bạn, tạo một thư mới (Soạn thư).</li>
+      <li>Viết Tiêu đề và Nội dung thư theo ý muốn.</li>
+      <li>Để chèn thông tin cá nhân hóa, bạn hãy gõ các từ khóa sau vào thư: <span class="highlight">{{danh xưng}}</span>, <span class="highlight">{{họ tên}}</span></li>
+      <li>Các trường phụ (nếu có sử dụng) gõ <b>chính xác</b> các từ khóa:<br>
+      <span class="highlight">{{other1}}</span>, <span class="highlight">{{other2}}</span> ... <span class="highlight">{{other8}}</span>.</li>
+      <li>Tắt cửa sổ soạn thư đi (Gmail sẽ tự động lưu nó vào thư mục <b>Nháp / Drafts</b>).</li>
+    </ul>
+
+    <h3>2. Chuẩn bị Dữ liệu trên Google Sheet</h3>
+    <ul>
+      <li>Đảm bảo Trang tính của bạn có <b>Cột Email</b> người nhận (bắt buộc).</li>
+      <li>Tạo thêm Cột <b>CC</b> hoặc <b>BCC</b> (tùy chọn) nếu bạn cần đồng gửi thư. Có thể chèn nhiều email trong cùng một ô, cách nhau bằng dấu phẩy (,).</li>
+      <li>Các cột thông tin khác (Danh xưng, Tên...) sắp xếp thứ tự tùy ý.</li>
+    </ul>
+
+    <h3>3. Chạy Bảng Điều Khiển</h3>
+    <ul>
+      <li>Vào menu <b>MailMerge > Mở Bảng Điều Khiển</b>.</li>
+      <li>Điền chữ cái của các cột (A, B, C...) tương ứng với dữ liệu của bạn. Hệ thống có tính năng quét tự động để hỗ trợ điền nhanh hơn.</li>
+      <li>Các trường không có dấu <b>*</b> là tùy chọn, bạn có thể để trống.</li>
+      <li>Hệ thống có khả năng loại bỏ các dòng bị ẩn do hide/filter.</li>
+      <li>Nhấn nút <b>GỬI EMAIL</b>. Trạng thái gửi (Status) sẽ tự động được ghi chú vào cột cuối cùng trên trang tính.</li>
+    </ul>
+
+    <h3>Hyperlink: Chèn Link Cá Nhân Hóa</h3>
+    <ul>
+      <li><b>Cơ bản (Cố định chữ, đổi Link):</b> Bôi đen chữ muốn chèn link trong nháp Gmail (VD: "Nhấn vào đây"), bấm <code>Ctrl + K</code>. Tại ô địa chỉ web (URL), nhập <span class="highlight">{{link}}</span>.</li>
+      
+      <li style="margin-top: 15px;"><b>Nâng cao (Đổi Cả Chữ lẫn Link cho từng người):</b><br>
+        Dùng khi bạn muốn mỗi người nhận thấy một đoạn chữ khác nhau (VD: <i>"Nguyễn Văn A"</i>).
+        <ul style="margin-top: 5px; list-style-type: circle;">
+            <li><b>Bước 1:</b> Trên Google Sheet, tạo một cột mới và dùng công thức ghép mã HTML sau:<br>
+            <div style="background-color: #f1f3f4; padding: 5px; border-radius: 4px; font-family: monospace; font-size: 11px;">="&lt;a href='" &amp; <span style="color:#1a73e8; font-weight:bold;">Ô_Link</span> &amp; "'&gt;" &amp; <span style="color:#0F9D58; font-weight:bold;">Ô_Chữ</span> &amp; "&lt;/a&gt;"</div>
+            <i>(Ví dụ: Cột E chứa Link, Cột F chứa Chữ thì công thức là: <code>="&lt;a href='" &amp; E2 &amp; "'&gt;" &amp; F2 &amp; "&lt;/a&gt;"</code>)</i>
+            </li>
+            <li><b>Bước 2:</b> Trên Bảng điều khiển, điền cột công thức vừa tạo vào mục <b>Cột Khác 1</b>.</li>
+            <li><b>Bước 3:</b> Trong bản nháp Gmail, bạn chỉ cần gõ thẻ <span class="highlight">{{other1}}</span> (Không bôi đen hay bấm Ctrl+K). Hệ thống sẽ tự động biến thẻ đó thành Hyperlink hoàn chỉnh!</li>
+        </ul>
+      </li>
+    </ul>
+
+    <h3>Attachment Files: Đính kèm file từ link Google Drive</h3>
+    <ul>
+      <li>Tạo một cột <b>Attach File</b> và Dán link Google Drive của file (PDF, hình ảnh...) vào cột này.</li>
+      <li>Đảm bảo file trong Drive đã được thiết lập quyền chia sẻ là <b>"Bất kỳ ai có liên kết đều có thể xem" (Anyone with the link)</b>.</li>
+      <li><b>Đính kèm nhiều file:</b> Dán các link liền nhau, cách nhau bằng một dấu phẩy (,), dấu chấm phẩy (;) hoặc dấu xuống dòng (Ctr+Enter)</li>
+    </ul>
+
+    <p style="text-align: center; margin-top: 30px; font-size: 12px; color: #888; font-style: italic;">
+      Chúc bạn làm việc hiệu quả!
+    </p>
+  </body>
+</html>

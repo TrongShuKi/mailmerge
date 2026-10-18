@@ -1,0 +1,19 @@
+{
+  "name": "mailmerge-viethope",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "push": "clasp push",
+    "pull": "clasp pull"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@google/clasp": "^3.4.1",
+    "jest": "^30.5.2"
+  }
+}

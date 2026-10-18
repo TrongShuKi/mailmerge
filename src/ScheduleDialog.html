@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; background-color: #f8f9fa; margin: 0; color: #333; }
+      h3 { margin-top: 0; color: #1a73e8; font-size: 15px; border-bottom: 2px solid #e8f0fe; padding-bottom: 8px;}
+      
+      .card { background: white; border-radius: 6px; padding: 15px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #ddd; }
+      .meta-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; font-size: 13px; margin-bottom: 12px; }
+      .meta-item b { color: #5f6368; }
+      
+      .action-row { display: flex; gap: 10px; align-items: center; }
+      input[type="datetime-local"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; flex: 1; }
+      
+      .btn { padding: 8px 16px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; transition: 0.2s; }
+      .btn-primary { background-color: #673ab7; color: white; }
+      .btn-primary:hover { background-color: #512da8; }
+      .btn-danger { background-color: #d32f2f; color: white; padding: 5px 10px; font-size: 11px; }
+      .btn-danger:hover { background-color: #b71c1c; }
+      .btn:disabled { background-color: #ccc; cursor: not-allowed; }
+
+      table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+      th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+      th { background-color: #f1f3f4; color: #5f6368; font-weight: bold; }
+      tr:hover { background-color: #fafafa; }
+      
+      #msg { margin-top: 10px; font-size: 13px; font-weight: bold; text-align: center; }
+      .badge { background: #e8f0fe; color: #1a73e8; padding: 3px 6px; border-radius: 3px; font-weight: bold; }
+      .badge-count { background: #e6f4ea; color: #137333; padding: 3px 8px; border-radius: 10px; font-weight: bold; }
+      .empty-notice { text-align: center; color: #888; font-style: italic; padding: 20px 0; }
+    </style>
+  </head>
+  <body>
+
+    <!-- KHỐI 1: LÊN LỊCH CHO CẤU HÌNH ĐANG CHỌN -->
+    <div class="card">
+      <h3>⏰ Lên lịch gửi cho cấu hình đang chọn</h3>
+      <div class="meta-grid">
+        <div class="meta-item"><b>Bản nháp:</b> <span id="cur-subject">...</span></div>
+        <div class="meta-item"><b>Tab Sheet:</b> <span id="cur-sheet">...</span></div>
+        <div class="meta-item"><b>Người gửi:</b> <span id="cur-sender">...</span></div>
+        <div class="meta-item"><b>Cột Email:</b> <span id="cur-email" class="badge">...</span></div>
+        <div class="meta-item" style="grid-column: span 2;">
+          <b>Số email dự kiến gửi:</b> <span id="cur-count" class="badge-count">0 email</span>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <input type="datetime-local" id="scheduleTimeInput">
+        <button class="btn btn-primary" id="btnSchedule" onclick="submitNewSchedule()">📅 XÁC NHẬN LÊN LỊCH</button>
+      </div>
+      <div id="msg"></div>
+    </div>
+
+    <!-- KHỐI 2: DANH SÁCH CHIẾN DỊCH ĐANG XẾP HÀNG -->
+    <div class="card">
+      <h3>📋 Danh sách chiến dịch đang xếp hàng (<span id="count-campaigns">0</span>)</h3>
+      <div id="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Bản nháp (Draft)</th>
+              <th>Tab Sheet</th>
+              <th style="text-align: center;">Số lượng mail</th>
+              <th>Thời gian hẹn gửi</th>
+              <th style="text-align: center;">Hành động</th>
+            </tr>
+          </thead>
+          <tbody id="campaign-list-body">
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      window.onload = function() {
+        loadData();
+      };
+
+      function loadData() {
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (res.currentConfig) {
+              document.getElementById('cur-subject').innerText = res.currentConfig.draftSubject || "(Chưa có)";
+              document.getElementById('cur-sheet').innerText = res.currentConfig.sheetName || "(Chưa có)";
+              document.getElementById('cur-sender').innerText = res.currentConfig.senderName || "(Mặc định)";
+              document.getElementById('cur-email').innerText = "Cột " + res.currentConfig.colEmail;
+              document.getElementById('cur-count').innerText = (res.currentConfig.recipientCount || 0) + " email";
+            }
+            renderTable(res.activeCampaigns);
+          })
+          .getScheduleManagerData();
+      }
+
+      function renderTable(campaigns) {
+        const tbody = document.getElementById('campaign-list-body');
+        document.getElementById('count-campaigns').innerText = campaigns.length;
+        tbody.innerHTML = "";
+
+        if (campaigns.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" class="empty-notice">Hiện chưa có chiến dịch nào đang xếp hàng chờ gửi.</td></tr>`;
+          return;
+        }
+
+        campaigns.forEach(camp => {
+          const dateFormatted = new Date(camp.scheduleTimeStr).toLocaleString('vi-VN');
+          const countDisplay = camp.recipientCount !== undefined ? camp.recipientCount : "-";
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td><b>${camp.draftSubject}</b></td>
+            <td>${camp.sheetName}</td>
+            <td style="text-align: center;"><span class="badge-count">${countDisplay} mail</span></td>
+            <td style="color: #673ab7; font-weight: bold;">${dateFormatted}</td>
+            <td style="text-align: center;">
+              <button class="btn btn-danger" onclick="cancelCampaign('${camp.id}')">Hủy</button>
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
+      }
+
+      function submitNewSchedule() {
+        const timeVal = document.getElementById('scheduleTimeInput').value;
+        if (!timeVal) {
+          showMsg("Vui lòng chọn ngày và giờ hẹn!", "#d93025");
+          return;
+        }
+
+        const btn = document.getElementById('btnSchedule');
+        btn.disabled = true;
+        btn.innerText = "ĐANG XỬ LÝ...";
+        showMsg("Đang lưu lịch hẹn và khởi tạo Trigger...", "#1a73e8");
+
+        google.script.run
+          .withSuccessHandler(function(res) {
+            btn.disabled = false;
+            btn.innerText = "📅 XÁC NHẬN LÊN LỊCH";
+            if (res.includes("thành công")) {
+              showMsg(res, "#0F9D58");
+              document.getElementById('scheduleTimeInput').value = "";
+              loadData();
+            } else {
+              showMsg(res, "#d93025");
+            }
+          })
+          .withFailureHandler(function(err) {
+            btn.disabled = false;
+            btn.innerText = "📅 XÁC NHẬN LÊN LỊCH";
+            showMsg("Lỗi: " + err.message, "#d93025");
+          })
+          .createNewScheduledCampaign(timeVal);
+      }
+
+      function cancelCampaign(campaignId) {
+        if (!confirm("Bạn có chắc chắn muốn hủy chiến dịch hẹn giờ này không?")) return;
+
+        showMsg("Đang hủy chiến dịch...", "#1a73e8");
+        google.script.run
+          .withSuccessHandler(function(res) {
+            showMsg(res, "#0F9D58");
+            loadData();
+          })
+          .withFailureHandler(function(err) {
+            showMsg("Lỗi: " + err.message, "#d93025");
+          })
+          .cancelSingleCampaign(campaignId);
+      }
+
+      function showMsg(text, color) {
+        const el = document.getElementById('msg');
+        el.innerText = text;
+        el.style.color = color;
+      }
+    </script>
+  </body>
+</html>

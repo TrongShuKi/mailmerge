@@ -1,0 +1,51 @@
+# Tên của quy trình tự động hiển thị trên tab Actions của GitHub
+name: MailMerge-VietHope CI/CD
+
+# SỰ KIỆN KÍCH HOẠT (Trigger):
+# Tự động đánh thức Robot mỗi khi bạn chạy lệnh 'git push' lên nhánh 'main'
+on:
+  push:
+    branches:
+      - main
+
+# DANH SÁCH CÔNG VIỆC MÀ ROBOT SẼ LÀM (Jobs):
+jobs:
+  build-and-deploy:
+    # Yêu cầu GitHub cấp một máy chủ ảo chạy hệ điều hành Ubuntu Linux mới nhất
+    runs-on: ubuntu-latest
+
+    # Các bước tuần tự từ 1 đến 6 mà máy chủ ảo sẽ thực hiện:
+    steps:
+      # BƯỚC 1: Kéo toàn bộ code bạn vừa push trên GitHub vào trong máy chủ ảo
+      - name: 1. Tải mã nguồn (Checkout code)
+        uses: actions/checkout@v4
+
+      # BƯỚC 2: Cài đặt phần mềm Node.js phiên bản 20 vào máy chủ ảo
+      # (Giống hệt bước bạn vừa chạy fix-npm.bat trên máy cá nhân)
+      - name: 2. Cài đặt Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # BƯỚC 3: Đọc tệp package.json và tải clasp + jest về thư mục node_modules của máy ảo
+      - name: 3. Cài đặt thư viện
+        run: npm install
+
+      # BƯỚC 4 (Giai đoạn CI - Kiểm thử): Chạy lệnh 'npm test'
+      # Nếu có bất kỳ bài test nào báo đỏ (FAIL), Robot sẽ DỪNG NGAY LẬP TỨC tại bước này
+      # và KHÔNG đẩy code lỗi lên Google Apps Script để bảo vệ người dùng!
+      - name: 4. Chạy kiểm thử mã nguồn (Unit Test)
+        run: npm test
+
+      # BƯỚC 5: Lấy chìa khóa đăng nhập Google (được cất an toàn trong két sắt GitHub Secrets)
+      # và tạo ra tệp .clasprc.json trên máy chủ ảo để công cụ clasp có quyền truy cập
+      - name: 5. Xác thực tài khoản Google Clasp
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          echo "$CLASPRC_JSON" > ~/.clasprc.json
+
+      # BƯỚC 6 (Giai đoạn CD - Triển khai): Đẩy toàn bộ code trong thư mục src/
+      # lên thẳng dự án Google Apps Script của bạn!
+      - name: 6. Đẩy mã nguồn lên Google Apps Script
+        run: npx clasp push --force
