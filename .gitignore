@@ -10,3 +10,7 @@ node_modules/
 
 # Tệp cấu hình clasp
 .clasp.json
+
+# Tệp khóa Google OAuth Credentials
+creds.json
+*creds*.json
