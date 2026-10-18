@@ -7,3 +7,6 @@ node_modules/
 # Tệp hệ thống và nhật ký
 *.log
 .DS_Store
+
+# Tệp cấu hình clasp
+.clasp.json
