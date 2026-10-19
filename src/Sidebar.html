@@ -148,11 +148,13 @@
       justify-content: space-between;
       padding: 8px 0;
     }
+
     .toggle-label {
       font-size: 13px;
       font-weight: bold;
       color: #333;
     }
+
     .toggle-sublabel {
       font-size: 11px;
       color: #666;
@@ -160,17 +162,20 @@
       margin-top: 2px;
       font-weight: normal;
     }
+
     .toggle-switch {
       position: relative;
       width: 44px;
       height: 24px;
       flex-shrink: 0;
     }
+
     .toggle-switch input {
       opacity: 0;
       width: 0;
       height: 0;
     }
+
     .toggle-slider {
       position: absolute;
       cursor: pointer;
@@ -179,6 +184,7 @@
       border-radius: 24px;
       transition: 0.3s;
     }
+
     .toggle-slider:before {
       content: "";
       position: absolute;
@@ -190,10 +196,12 @@
       border-radius: 50%;
       transition: 0.3s;
     }
-    .toggle-switch input:checked + .toggle-slider {
+
+    .toggle-switch input:checked+.toggle-slider {
       background-color: #1a73e8;
     }
-    .toggle-switch input:checked + .toggle-slider:before {
+
+    .toggle-switch input:checked+.toggle-slider:before {
       transform: translateX(20px);
     }
   </style>
@@ -334,8 +342,7 @@
     <div style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 10px;">
       <div class="toggle-container">
         <div>
-          <span class="toggle-label">📊 Theo dõi mở email</span>
-          <span class="toggle-sublabel">Chèn tracking pixel ẩn vào email</span>
+          <span class="toggle-label">📊 Open Tracking</span>
         </div>
         <label class="toggle-switch">
           <input type="checkbox" id="enableTracking">
