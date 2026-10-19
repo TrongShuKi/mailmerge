@@ -2,7 +2,7 @@
 // DỰ ÁN: GOOGLE SHEETS MAIL MERGE PRO
 // TỆP: MailMergePro.gs - CORE ENGINE (TÍCH HỢP OPEN TRACKING)
 // ============================================================================
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.1.2";
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
