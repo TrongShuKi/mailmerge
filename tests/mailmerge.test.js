@@ -281,7 +281,7 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
     test('Trích xuất chính xác ID từ các dạng liên kết Google Drive phổ biến', () => {
       const link1 = "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view?usp=sharing";
       const link2 = "https://drive.google.com/open?id=1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
-      
+
       const ids1 = extractDriveFileIds(link1);
       const ids2 = extractDriveFileIds(link2);
 
@@ -316,7 +316,7 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
       // Tạo chuỗi giả lập 250 KB
       const largeData = "A".repeat(250 * 1024);
       const CHUNK_SIZE = 80 * 1024; // 80 KB mỗi mảnh
-      
+
       const chunkMap = chunkString(largeData, CHUNK_SIZE);
 
       // 250KB / 80KB = 4 mảnh (80KB, 80KB, 80KB, 10KB)
@@ -335,7 +335,7 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
     test('Báo lỗi (null) an toàn nếu một mảnh trong bộ đệm bị mất hoặc hết hạn', () => {
       const data = "B".repeat(100 * 1024);
       const chunkMap = chunkString(data, 50 * 1024);
-      
+
       // Giả lập chunk_1 bị quá hạn hoặc bị xóa
       delete chunkMap['chunk_1'];
 
