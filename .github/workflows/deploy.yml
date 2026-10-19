@@ -4,12 +4,16 @@ name: MailMerge CI/CD
 # SỰ KIỆN KÍCH HOẠT (Trigger):
 # 1. Tự động kiểm thử & đồng bộ code khi push lên nhánh 'main'
 # 2. Hoặc đóng gói phát hành khi bạn push Git Tag (ví dụ: v1.0.5)
+# 3. Tự động kiểm thử (CI Unit Test) khi mở Pull Request vào nhánh 'main'
 on:
   push:
     branches:
       - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
 
 # DANH SÁCH CÔNG VIỆC MÀ ROBOT SẼ LÀM (Jobs):
 jobs:
@@ -43,6 +47,7 @@ jobs:
       # BƯỚC 5: Lấy chìa khóa đăng nhập Google (được cất an toàn trong két sắt GitHub Secrets)
       # và tạo ra tệp .clasprc.json trên máy chủ ảo để công cụ clasp có quyền truy cập
       - name: 5. Xác thực tài khoản Google Clasp
+        if: github.event_name == 'push'
         env:
           CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
         run: |
@@ -50,6 +55,7 @@ jobs:
 
       # BƯỚC 6: Khởi tạo tệp .clasp.json từ tệp mẫu .clasp.json.example và Secret SCRIPT_ID
       - name: 6. Khởi tạo cấu hình .clasp.json từ Template
+        if: github.event_name == 'push'
         env:
           SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
         run: |
@@ -69,6 +75,7 @@ jobs:
       # BƯỚC 7 (Giai đoạn CD - Đồng bộ): Đẩy toàn bộ code trong thư mục src/
       # lên bản thảo phát triển (HEAD) của Google Apps Script
       - name: 7. Đẩy mã nguồn lên Google Apps Script (HEAD)
+        if: github.event_name == 'push'
         run: npx clasp push --force
 
       # BƯỚC 8 (Giai đoạn CD - Phát hành chính thức): CHỈ chạy khi bạn gõ lệnh tạo Git Tag (ví dụ: v1.0.5)
