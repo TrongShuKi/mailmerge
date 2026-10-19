@@ -133,6 +133,35 @@ function autoCleanExpiredCampaigns(campaigns, currentTimestampMs) {
   return cleaned;
 }
 
+// H. Tạo HTML tracking pixel (logic trích xuất từ TrackingLogic.js)
+function generateTrackingPixelHtml_test(webAppUrl, spreadsheetId, sheetName, rowIndex, statusColName, fixedTimestamp) {
+  const ts = fixedTimestamp || new Date().getTime();
+  const params = [
+    "id=" + encodeURIComponent(spreadsheetId),
+    "sheet=" + encodeURIComponent(sheetName),
+    "row=" + rowIndex,
+    "colName=" + encodeURIComponent(statusColName || "Tracking"),
+    "ts=" + ts
+  ].join("&");
+  const trackingUrl = webAppUrl + "?" + params;
+  return '<img src="' + trackingUrl + '" '
+    + 'width="1" height="1" '
+    + 'style="display:none !important; max-height:0; opacity:0;" '
+    + 'alt="" />';
+}
+
+// I. Kiểm tra thời gian chống báo ảo (Anti-False Positive)
+function isTrackingRequestValid(sendTimestamp, receiveTimestamp, cooldownMs) {
+  if (isNaN(sendTimestamp) || isNaN(receiveTimestamp)) return false;
+  return (receiveTimestamp - sendTimestamp) >= cooldownMs;
+}
+
+// J. Kiểm tra chống ghi đè trạng thái (Anti-Overwrite)
+function shouldUpdateTrackingStatus(currentCellValue) {
+  if (!currentCellValue) return true;
+  return currentCellValue.toString().indexOf("Đã xem") === -1;
+}
+
 // ----------------------------------------------------------------------------
 // 2. TẬP HỢP TẤT CẢ CÁC BÀI TEST CHỨC NĂNG CỦA HỆ THỐNG
 // ----------------------------------------------------------------------------
@@ -252,7 +281,7 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
     test('Trích xuất chính xác ID từ các dạng liên kết Google Drive phổ biến', () => {
       const link1 = "https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/view?usp=sharing";
       const link2 = "https://drive.google.com/open?id=1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
-      
+
       const ids1 = extractDriveFileIds(link1);
       const ids2 = extractDriveFileIds(link2);
 
@@ -287,7 +316,7 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
       // Tạo chuỗi giả lập 250 KB
       const largeData = "A".repeat(250 * 1024);
       const CHUNK_SIZE = 80 * 1024; // 80 KB mỗi mảnh
-      
+
       const chunkMap = chunkString(largeData, CHUNK_SIZE);
 
       // 250KB / 80KB = 4 mảnh (80KB, 80KB, 80KB, 10KB)
@@ -306,7 +335,7 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
     test('Báo lỗi (null) an toàn nếu một mảnh trong bộ đệm bị mất hoặc hết hạn', () => {
       const data = "B".repeat(100 * 1024);
       const chunkMap = chunkString(data, 50 * 1024);
-      
+
       // Giả lập chunk_1 bị quá hạn hoặc bị xóa
       delete chunkMap['chunk_1'];
 
@@ -347,6 +376,98 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
       expect(cleaned['camp_future_2'].draftSubject).toBe('Chiến dịch tuần sau');
       expect(cleaned['camp_past_expired']).toBeUndefined();
       expect(cleaned['camp_just_passed']).toBeUndefined();
+    });
+  });
+
+  // --- SUITE 8: HỆ THỐNG THEO DÕI MỞ EMAIL (OPEN TRACKING) ---
+  describe('8. Kiểm tra Hệ thống Theo dõi Mở Email (Open Tracking)', () => {
+
+    test('Tạo thẻ tracking pixel với đầy đủ thuộc tính ẩn (width=1, height=1, display:none, opacity:0)', () => {
+      const pixel = generateTrackingPixelHtml_test(
+        "https://script.google.com/macros/s/DEPLOY_ID/exec",
+        "ss_abc123",
+        "Sheet1",
+        5,
+        "Tracking",
+        1729330800000
+      );
+
+      // Kiểm tra thuộc tính ẩn bắt buộc
+      expect(pixel).toContain('width="1"');
+      expect(pixel).toContain('height="1"');
+      expect(pixel).toContain('display:none !important');
+      expect(pixel).toContain('max-height:0');
+      expect(pixel).toContain('opacity:0');
+      expect(pixel).toContain('alt=""');
+      expect(pixel).toContain('<img');
+      expect(pixel).toContain('/>');
+    });
+
+    test('URL tracking pixel chứa đầy đủ tham số: id, sheet, row, colName, ts', () => {
+      const pixel = generateTrackingPixelHtml_test(
+        "https://script.google.com/macros/s/DEPLOY_ID/exec",
+        "ss_spreadsheet_123",
+        "Danh Sách Gửi",
+        10,
+        "Trạng Thái Xem",
+        1729330800000
+      );
+
+      expect(pixel).toContain("id=ss_spreadsheet_123");
+      expect(pixel).toContain("sheet=Danh%20S%C3%A1ch%20G%E1%BB%ADi"); // URL-encoded Vietnamese
+      expect(pixel).toContain("row=10");
+      expect(pixel).toContain("colName=Tr%E1%BA%A1ng%20Th%C3%A1i%20Xem");
+      expect(pixel).toContain("ts=1729330800000");
+    });
+
+    test('Chống báo ảo: Từ chối request mở email nếu đến trong vòng 15 giây (Gmail Proxy pre-fetch)', () => {
+      const COOLDOWN = 15000; // 15 giây
+      const sendTime = 1729330800000;
+
+      // Request đến sau 3 giây → Gmail Proxy → KHÔNG HỢP LỆ
+      expect(isTrackingRequestValid(sendTime, sendTime + 3000, COOLDOWN)).toBe(false);
+
+      // Request đến sau 10 giây → vẫn trong cooldown → KHÔNG HỢP LỆ
+      expect(isTrackingRequestValid(sendTime, sendTime + 10000, COOLDOWN)).toBe(false);
+
+      // Request đến sau 14.9 giây → vẫn trong cooldown → KHÔNG HỢP LỆ
+      expect(isTrackingRequestValid(sendTime, sendTime + 14999, COOLDOWN)).toBe(false);
+
+      // Request đến đúng 15 giây → HỢP LỆ (người dùng thật)
+      expect(isTrackingRequestValid(sendTime, sendTime + 15000, COOLDOWN)).toBe(true);
+
+      // Request đến sau 2 phút → HỢP LỆ (người dùng thật mở muộn)
+      expect(isTrackingRequestValid(sendTime, sendTime + 120000, COOLDOWN)).toBe(true);
+    });
+
+    test('Chống báo ảo: Xử lý an toàn khi timestamp không hợp lệ (NaN, undefined)', () => {
+      const COOLDOWN = 15000;
+      expect(isTrackingRequestValid(NaN, 1729330800000, COOLDOWN)).toBe(false);
+      expect(isTrackingRequestValid(1729330800000, NaN, COOLDOWN)).toBe(false);
+      expect(isTrackingRequestValid(undefined, undefined, COOLDOWN)).toBe(false);
+    });
+
+    test('Chống ghi đè: Không cập nhật nếu ô đã có trạng thái "Đã xem"', () => {
+      // Ô trống → cho phép ghi
+      expect(shouldUpdateTrackingStatus("")).toBe(true);
+      expect(shouldUpdateTrackingStatus(null)).toBe(true);
+      expect(shouldUpdateTrackingStatus(undefined)).toBe(true);
+
+      // Ô đã có "Đã xem" → KHÔNG ghi đè
+      expect(shouldUpdateTrackingStatus("Đã xem (14:30 19/10)")).toBe(false);
+      expect(shouldUpdateTrackingStatus("Đã xem (09:00 20/10)")).toBe(false);
+
+      // Ô có nội dung khác (ví dụ: "Đã gửi") → cho phép ghi
+      expect(shouldUpdateTrackingStatus("Đã gửi")).toBe(true);
+      expect(shouldUpdateTrackingStatus("Lỗi gửi")).toBe(true);
+    });
+
+    test('Mặc định sử dụng tên cột "Tracking" khi statusColName rỗng', () => {
+      const pixel = generateTrackingPixelHtml_test(
+        "https://script.google.com/macros/s/DEPLOY_ID/exec",
+        "ss_123", "Sheet1", 2, "", 1729330800000
+      );
+      expect(pixel).toContain("colName=Tracking");
     });
   });
 

@@ -1,8 +1,8 @@
 // ============================================================================
 // DỰ ÁN: GOOGLE SHEETS MAIL MERGE PRO
-// TỆP: MailMergePro.gs - CORE ENGINE (BẢN TINH GIẢN, KHÔNG TRACKING)
+// TỆP: MailMergePro.gs - CORE ENGINE (TÍCH HỢP OPEN TRACKING)
 // ============================================================================
-const APP_VERSION = "1.0.4";
+const APP_VERSION = "1.1.0";
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
@@ -119,7 +119,9 @@ function getAutoConfig() {
     colAttachment: colAttachment,
     colOther1: "", colOther2: "", colOther3: "", colOther4: "",
     colOther5: "", colOther6: "", colOther7: "", colOther8: "",
-    delayTime: 1
+    delayTime: 1,
+    enableTracking: false,              // Mặc định TẮT theo dõi mở email
+    trackingStatusColName: "Tracking"   // Tên cột tracking trên Sheet
   };
 }
 
@@ -247,6 +249,17 @@ function sendMergeEmailsFromDraft(config) {
         });
 
         personalizedHtml = encodeEmojiToHtmlEntity(personalizedHtml);
+
+        // === OPEN TRACKING: Chèn tracking pixel ẩn vào cuối email nếu bật ===
+        if (config.enableTracking) {
+          var webAppUrl = getTrackingWebAppUrl();
+          if (webAppUrl) {
+            var ssId = ss.getId();
+            var trackingColName = config.trackingStatusColName || "Tracking";
+            var pixelHtml = generateTrackingPixelHtml(webAppUrl, ssId, config.sheetName, i + 1, trackingColName);
+            personalizedHtml += pixelHtml;
+          }
+        }
 
         let emailOptions = { htmlBody: personalizedHtml };
         if (Object.keys(inlineImages).length > 0) emailOptions.inlineImages = inlineImages;
