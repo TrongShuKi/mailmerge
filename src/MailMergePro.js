@@ -22,9 +22,9 @@ function showSidebar() {
 
 function showGuideDialog() {
   const html = HtmlService.createHtmlOutputFromFile('Guide')
-    .setWidth(600)
-    .setHeight(450);
-  SpreadsheetApp.getUi().showModalDialog(html, '📖 Hướng Dẫn Sử Dụng Mail Merge');
+    .setWidth(680)
+    .setHeight(540);
+  SpreadsheetApp.getUi().showModalDialog(html, '📖 Hướng Dẫn Sử Dụng MailMerge Pro');
 }
 
 function getAutoConfig() {

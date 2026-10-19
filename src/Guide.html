@@ -2,71 +2,234 @@
 <html>
   <head>
     <base target="_top">
+    <meta charset="utf-8">
     <style>
-      body { font-family: Arial, sans-serif; padding: 15px 25px; color: #333; line-height: 1.6; background-color: #fcfcfc;}
-      h2 { color: #1a73e8; margin-top: 0; text-align: center; font-size: 22px;}
-      h3 { color: #0F9D58; margin-bottom: 8px; font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 5px;}
-      ul { margin-top: 0; padding-left: 20px; }
-      li { margin-bottom: 8px; }
-      .highlight { background-color: #fce8e6; color: #d93025; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold;}
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        padding: 18px 24px 30px 24px;
+        color: #202124;
+        line-height: 1.6;
+        background-color: #ffffff;
+        margin: 0;
+      }
+
+      /* Banner Video YouTube ở đầu */
+      .video-banner {
+        background: linear-gradient(135deg, #fff5f5 0%, #ffe3e3 100%);
+        border: 1px solid #ffc1c1;
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin-bottom: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 15px;
+        box-shadow: 0 2px 6px rgba(217, 48, 37, 0.08);
+      }
+      .video-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .video-icon {
+        font-size: 28px;
+        line-height: 1;
+      }
+      .video-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #c5221f;
+        margin-bottom: 2px;
+      }
+      .video-desc {
+        font-size: 12px;
+        color: #5f6368;
+      }
+      .video-btn {
+        display: inline-block;
+        background-color: #d93025;
+        color: white !important;
+        text-decoration: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: bold;
+        white-space: nowrap;
+        transition: background-color 0.2s;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+      }
+      .video-btn:hover {
+        background-color: #b31412;
+      }
+
+      h2 {
+        color: #1a73e8;
+        margin-top: 0;
+        margin-bottom: 15px;
+        font-size: 20px;
+        text-align: center;
+      }
+
+      .card {
+        background: #f8fafd;
+        border: 1px solid #dadce0;
+        border-radius: 8px;
+        padding: 14px 18px;
+        margin-bottom: 18px;
+      }
+
+      h3 {
+        margin-top: 0;
+        margin-bottom: 10px;
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .h3-blue { color: #1a73e8; }
+      .h3-green { color: #0F9D58; }
+      .h3-purple { color: #673ab7; }
+      .h3-orange { color: #e37400; }
+
+      ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      li {
+        margin-bottom: 8px;
+        font-size: 13px;
+      }
+
+      .tag {
+        background-color: #fce8e6;
+        color: #d93025;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-weight: bold;
+        font-size: 12px;
+      }
+      .tag-code {
+        background-color: #e8f0fe;
+        color: #1a73e8;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 11px;
+      }
+
+      .badge {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: bold;
+        padding: 2px 6px;
+        border-radius: 4px;
+        vertical-align: middle;
+      }
+      .badge-blue { background: #e8f0fe; color: #1a73e8; }
+      .badge-green { background: #e6f4ea; color: #137333; }
+      .badge-yellow { background: #fef7e0; color: #b06000; }
+      .badge-purple { background: #f3e8fd; color: #7627bb; }
+
+      .alert {
+        background-color: #fef7e0;
+        border-left: 4px solid #f9ab00;
+        padding: 8px 12px;
+        font-size: 12px;
+        border-radius: 0 4px 4px 0;
+        margin-top: 10px;
+      }
     </style>
   </head>
   <body>
-    <h2>Chào mừng bạn đến với công cụ Mail Merge!</h2>
-    <p>Dưới đây là 3 bước để cấu hình và gửi hàng loạt email tự động:</p>
 
-    <h3>1. Chuẩn bị Bản nháp (Draft) trong Gmail</h3>
-    <ul>
-      <li>Mở Gmail của bạn, tạo một thư mới (Soạn thư).</li>
-      <li>Viết Tiêu đề và Nội dung thư theo ý muốn.</li>
-      <li>Để chèn thông tin cá nhân hóa, bạn hãy gõ các từ khóa sau vào thư: <span class="highlight">{{danh xưng}}</span>, <span class="highlight">{{họ tên}}</span></li>
-      <li>Các trường phụ (nếu có sử dụng) gõ <b>chính xác</b> các từ khóa:<br>
-      <span class="highlight">{{other1}}</span>, <span class="highlight">{{other2}}</span> ... <span class="highlight">{{other8}}</span>.</li>
-      <li>Tắt cửa sổ soạn thư đi (Gmail sẽ tự động lưu nó vào thư mục <b>Nháp / Drafts</b>).</li>
-    </ul>
+    <!-- 1. BANNER VIDEO YOUTUBE Ở ĐẦU -->
+    <div class="video-banner">
+      <div class="video-info">
+        <span class="video-icon">🎬</span>
+        <div>
+          <div class="video-title">Video Hướng Dẫn Sử Dụng Chi Tiết</div>
+          <div class="video-desc">Xem hướng dẫn từng bước từ cấu hình bản nháp đến gửi email tự động</div>
+        </div>
+      </div>
+      <a href="https://youtu.be/TqpBtVgmmOg" target="_blank" class="video-btn">
+        ▶️ XEM VIDEO
+      </a>
+    </div>
 
-    <h3>2. Chuẩn bị Dữ liệu trên Google Sheet</h3>
-    <ul>
-      <li>Đảm bảo Trang tính của bạn có <b>Cột Email</b> người nhận (bắt buộc).</li>
-      <li>Tạo thêm Cột <b>CC</b> hoặc <b>BCC</b> (tùy chọn) nếu bạn cần đồng gửi thư. Có thể chèn nhiều email trong cùng một ô, cách nhau bằng dấu phẩy (,).</li>
-      <li>Các cột thông tin khác (Danh xưng, Tên...) sắp xếp thứ tự tùy ý.</li>
-    </ul>
+    <h2>🚀 CẨM NANG SỬ DỤNG MAILMERGE PRO</h2>
 
-    <h3>3. Chạy Bảng Điều Khiển</h3>
-    <ul>
-      <li>Vào menu <b>MailMerge > Mở Bảng Điều Khiển</b>.</li>
-      <li>Điền chữ cái của các cột (A, B, C...) tương ứng với dữ liệu của bạn. Hệ thống có tính năng quét tự động để hỗ trợ điền nhanh hơn.</li>
-      <li>Các trường không có dấu <b>*</b> là tùy chọn, bạn có thể để trống.</li>
-      <li>Hệ thống có khả năng loại bỏ các dòng bị ẩn do hide/filter.</li>
-      <li>Nhấn nút <b>GỬI EMAIL</b>. Trạng thái gửi (Status) sẽ tự động được ghi chú vào cột cuối cùng trên trang tính.</li>
-    </ul>
+    <!-- 2. QUY TRÌNH 3 BƯỚC CƠ BẢN -->
+    <div class="card">
+      <h3 class="h3-blue">📋 1. Chuẩn Bị Bản Nháp (Draft) Trong Gmail</h3>
+      <ul>
+        <li>Vào Gmail $\rightarrow$ bấm <b>Soạn thư</b> $\rightarrow$ nhập Tiêu đề và Nội dung thư mẫu.</li>
+        <li><b>Chèn thông tin cá nhân hóa:</b> Nhập các từ khóa trong dấu ngoặc kép đôi:<br>
+          • Danh xưng: <span class="tag">{{danhxung}}</span> hoặc <span class="tag">{{title}}</span><br>
+          • Tên / Họ tên: <span class="tag">{{ten}}</span> hoặc <span class="tag">{{fullname}}</span><br>
+          • Liên kết động: <span class="tag">{{link}}</span><br>
+          • Các thông tin mở rộng: <span class="tag">{{other1}}</span>, <span class="tag">{{other2}}</span> ... <span class="tag">{{other8}}</span>
+        </li>
+        <li>Tắt cửa sổ soạn thư để Gmail tự lưu vào mục <b>Bản nháp (Drafts)</b>.</li>
+      </ul>
+    </div>
 
-    <h3>Hyperlink: Chèn Link Cá Nhân Hóa</h3>
-    <ul>
-      <li><b>Cơ bản (Cố định chữ, đổi Link):</b> Bôi đen chữ muốn chèn link trong nháp Gmail (VD: "Nhấn vào đây"), bấm <code>Ctrl + K</code>. Tại ô địa chỉ web (URL), nhập <span class="highlight">{{link}}</span>.</li>
-      
-      <li style="margin-top: 15px;"><b>Nâng cao (Đổi Cả Chữ lẫn Link cho từng người):</b><br>
-        Dùng khi bạn muốn mỗi người nhận thấy một đoạn chữ khác nhau (VD: <i>"Nguyễn Văn A"</i>).
-        <ul style="margin-top: 5px; list-style-type: circle;">
-            <li><b>Bước 1:</b> Trên Google Sheet, tạo một cột mới và dùng công thức ghép mã HTML sau:<br>
-            <div style="background-color: #f1f3f4; padding: 5px; border-radius: 4px; font-family: monospace; font-size: 11px;">="&lt;a href='" &amp; <span style="color:#1a73e8; font-weight:bold;">Ô_Link</span> &amp; "'&gt;" &amp; <span style="color:#0F9D58; font-weight:bold;">Ô_Chữ</span> &amp; "&lt;/a&gt;"</div>
-            <i>(Ví dụ: Cột E chứa Link, Cột F chứa Chữ thì công thức là: <code>="&lt;a href='" &amp; E2 &amp; "'&gt;" &amp; F2 &amp; "&lt;/a&gt;"</code>)</i>
-            </li>
-            <li><b>Bước 2:</b> Trên Bảng điều khiển, điền cột công thức vừa tạo vào mục <b>Cột Khác 1</b>.</li>
-            <li><b>Bước 3:</b> Trong bản nháp Gmail, bạn chỉ cần gõ thẻ <span class="highlight">{{other1}}</span> (Không bôi đen hay bấm Ctrl+K). Hệ thống sẽ tự động biến thẻ đó thành Hyperlink hoàn chỉnh!</li>
-        </ul>
-      </li>
-    </ul>
+    <div class="card">
+      <h3 class="h3-blue">📊 2. Chuẩn Bị Bảng Tính Google Sheets</h3>
+      <ul>
+        <li><b>Cột Email (Bắt buộc):</b> Chứa địa chỉ email người nhận chính.</li>
+        <li><b>Cột CC / BCC (Tùy chọn):</b> Chứa email đồng gửi. Nếu có nhiều email trong 1 ô, ngăn cách bằng dấu phẩy <code>,</code> hoặc chấm phẩy <code>;</code>.</li>
+        <li><b>Hệ thống tự động bỏ qua:</b> Các hàng bị ẩn do lọc (Filter) hoặc ẩn thủ công (Hide row) sẽ không bị gửi email.</li>
+        <li><b>Chống gửi lặp:</b> Các hàng đã có trạng thái <b>"Đã gửi"</b> ở cột Status sẽ tự động được bỏ qua, không bao giờ lo gửi trùng thư!</li>
+      </ul>
+    </div>
 
-    <h3>Attachment Files: Đính kèm file từ link Google Drive</h3>
-    <ul>
-      <li>Tạo một cột <b>Attach File</b> và Dán link Google Drive của file (PDF, hình ảnh...) vào cột này.</li>
-      <li>Đảm bảo file trong Drive đã được thiết lập quyền chia sẻ là <b>"Bất kỳ ai có liên kết đều có thể xem" (Anyone with the link)</b>.</li>
-      <li><b>Đính kèm nhiều file:</b> Dán các link liền nhau, cách nhau bằng một dấu phẩy (,), dấu chấm phẩy (;) hoặc dấu xuống dòng (Ctr+Enter)</li>
-    </ul>
+    <!-- 3. CÁC TÍNH NĂNG NỔI BẬT TRÊN SIDEBAR -->
+    <div class="card">
+      <h3 class="h3-green">⚡ 3. Các Chức Năng Nổi Bật Trên Bảng Điều Khiển (Sidebar)</h3>
+      <ul>
+        <li><span class="badge badge-yellow">PREVIEW</span> <b>Xem trước thư:</b> Kiểm tra giao diện email thực tế đã ghép dữ liệu của người nhận đầu tiên trước khi bấm gửi thật.</li>
+        <li><span class="badge badge-blue">SEND TEST EMAIL</span> <b>Gửi thư thử nghiệm:</b> Gửi ngay 1 email mẫu tới chính địa chỉ Gmail của bạn để kiểm tra hiển thị trên điện thoại và máy tính.</li>
+        <li><span class="badge badge-green">SEND EMAIL</span> <b>Gửi hàng loạt:</b> Tự động duyệt danh sách và gửi email. Có thanh điều chỉnh <b>Thời gian chờ (Delay time)</b> 1-2 giây giữa 2 email để bảo vệ tài khoản chống bộ lọc Spam của Google.</li>
+        <li><span class="badge badge-blue">📊 OPEN TRACKING</span> <b>Theo dõi mở email:</b> Bật công tắc này, hệ thống sẽ tự động chèn pixel ẩn và cập nhật thời gian <span class="tag-code">Đã xem (HH:mm dd/MM)</span> vào cột <b>Tracking</b> trên Sheet ngay khi người nhận mở thư (Tích hợp bộ lọc chống báo ảo 15s).</li>
+        <li><span class="badge badge-purple">⏰ SCHEDULE MANAGER</span> <b>Hẹn giờ gửi tự động:</b> Lên lịch gửi email vào một ngày/giờ cụ thể trong tương lai. Hệ thống kích hoạt ngầm trên máy chủ Google, bạn có thể tắt máy tính mà email vẫn gửi đúng lịch hẹn.</li>
+      </ul>
+    </div>
 
-    <p style="text-align: center; margin-top: 30px; font-size: 12px; color: #888; font-style: italic;">
-      Chúc bạn làm việc hiệu quả!
+    <!-- 4. TÍNH NĂNG NÂNG CAO -->
+    <div class="card">
+      <h3 class="h3-purple">📎 4. Đính Kèm File Từ Google Drive (Attachment)</h3>
+      <ul>
+        <li>Tạo cột và dán đường link chia sẻ Google Drive của file (PDF, DOCX, Ảnh, Excel...).</li>
+        <li><b>Quan trọng:</b> Cần cấp quyền chia sẻ cho tệp trong Drive là <b>"Bất kỳ ai có đường liên kết đều có thể xem" (Anyone with the link)</b>.</li>
+        <li><b>Đính kèm nhiều file cho 1 người:</b> Dán các link trong cùng một ô, cách nhau bằng dấu phẩy <code>,</code>, chấm phẩy <code>;</code> hoặc dấu xuống dòng <code>Ctrl + Enter</code>.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3 class="h3-orange">🔗 5. Chèn Hyperlink Cá Nhân Hóa (Liên Kết Web)</h3>
+      <ul>
+        <li><b>Cách 1 (Chữ cố định, link thay đổi):</b> Bôi đen cụm từ trong bản nháp Gmail (VD: <i>"Bấm vào đây"</i>) $\rightarrow$ bấm <code>Ctrl + K</code> $\rightarrow$ tại ô URL dán <span class="tag">{{link}}</span>.</li>
+        <li><b>Cách 2 (Đổi cả chữ lẫn link theo từng người nhận):</b><br>
+          Trên Sheet dùng công thức ghép HTML:<br>
+          <div style="background-color: #f1f3f4; padding: 6px 10px; border-radius: 4px; font-family: monospace; font-size: 11px; margin: 4px 0;">
+            ="&lt;a href='" &amp; <span style="color:#1a73e8; font-weight:bold;">Ô_Link</span> &amp; "'&gt;" &amp; <span style="color:#0F9D58; font-weight:bold;">Ô_Hiển_Thị</span> &amp; "&lt;/a&gt;"
+          </div>
+          Sau đó chọn cột này vào mục <b>Cột Khác 1</b>, trong bản nháp Gmail chỉ cần gõ <span class="tag">{{other1}}</span>.
+        </li>
+      </ul>
+    </div>
+
+    <div class="alert">
+      <b>⚠️ Lưu ý hạn ngạch gửi thư của Google:</b><br>
+      • Tài khoản Gmail cá nhân (@gmail.com): Tối đa ~<b>500 email/ngày</b>.<br>
+      • Tài khoản Google Workspace doanh nghiệp/trường học: Tối đa ~<b>1.500 email/ngày</b>.<br>
+      Nếu gửi vượt hạn mức, Google sẽ tạm khóa chức năng gửi thư trong 24 giờ.
+    </div>
+
+    <p style="text-align: center; margin-top: 25px; font-size: 12px; color: #888; font-style: italic;">
+      MailMerge Pro • Phiên bản tối ưu hoá hiệu năng & tự động hóa hoàn toàn
     </p>
+
   </body>
 </html>
