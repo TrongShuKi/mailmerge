@@ -6,9 +6,10 @@
 [![Platform](https://img.shields.io/badge/platform-Google%20Workspace-orange.svg)]()
 
 
-> Giải pháp gửi email hàng loạt tự động, cá nhân hóa trên nền tảng **Google Sheets & Gmail**, tích hợp đầy đủ quy trình **CI/CD** chuẩn công nghiệp.
+> Giải pháp gửi email hàng loạt tự động, cá nhân hóa trên nền tảng **Google Sheets & Gmail**, tích hợp đầy đủ quy trình **CI/CD**.
 
-🎬 **[Xem Video Hướng Dẫn Sử Dụng Nhanh trên YouTube (5 phút)](https://youtu.be/TqpBtVgmmOg)**
+🎬 **[Xem Video Demo Thực Tế trên YouTube (Triển khai tại VietHope)](https://youtu.be/TqpBtVgmmOg)**
+> 💡 *Video hướng dẫn sử dụng và áp dụng thực tế cho các chiến dịch gửi thư nội bộ tại tổ chức VietHope.*
 
 ---
 
