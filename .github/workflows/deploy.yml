@@ -2,11 +2,14 @@
 name: MailMerge CI/CD
 
 # SỰ KIỆN KÍCH HOẠT (Trigger):
-# Tự động đánh thức Robot mỗi khi bạn chạy lệnh 'git push' lên nhánh 'main'
+# 1. Tự động kiểm thử & đồng bộ code khi push lên nhánh 'main'
+# 2. Hoặc đóng gói phát hành khi bạn push Git Tag (ví dụ: v1.0.5)
 on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
 
 # DANH SÁCH CÔNG VIỆC MÀ ROBOT SẼ LÀM (Jobs):
 jobs:
@@ -63,7 +66,14 @@ jobs:
             console.log("Đã khởi tạo .clasp.json thành công từ SCRIPT_ID!");
           '
 
-      # BƯỚC 7 (Giai đoạn CD - Triển khai): Đẩy toàn bộ code trong thư mục src/
-      # lên thẳng dự án Google Apps Script của bạn!
-      - name: 7. Đẩy mã nguồn lên Google Apps Script
+      # BƯỚC 7 (Giai đoạn CD - Đồng bộ): Đẩy toàn bộ code trong thư mục src/
+      # lên bản thảo phát triển (HEAD) của Google Apps Script
+      - name: 7. Đẩy mã nguồn lên Google Apps Script (HEAD)
         run: npx clasp push --force
+
+      # BƯỚC 8 (Giai đoạn CD - Phát hành chính thức): CHỈ chạy khi bạn gõ lệnh tạo Git Tag (ví dụ: v1.0.5)
+      # Robot sẽ tự động đóng gói tạo một Version Deployment mới tinh trên Google Apps Script!
+      - name: 8. Đóng gói & Phát hành Version mới (Chỉ chạy khi push Git Tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          npx clasp deploy --description "Release ${{ github.ref_name }}"
