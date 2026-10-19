@@ -78,9 +78,12 @@ jobs:
         if: github.event_name == 'push'
         run: npx clasp push --force
 
-      # BƯỚC 8 (Giai đoạn CD - Phát hành chính thức): CHỈ chạy khi bạn gõ lệnh tạo Git Tag (ví dụ: v1.0.5)
-      # Robot sẽ tự động đóng gói tạo một Version Deployment mới tinh trên Google Apps Script!
-      - name: 8. Đóng gói & Phát hành Version mới (Chỉ chạy khi push Git Tag)
+      # BƯỚC 8 (Giai đoạn CD - Phát hành chính thức): CHỈ chạy khi bạn gõ lệnh tạo Git Tag (ví dụ: v1.1.2)
+      # Robot sẽ tự động đóng gói Version và CẬP NHẬT ĐÈ TRỰC TIẾP vào 2 Deployment đang Active:
+      # 1. Manage Cache Storage (Add-on phục vụ Google Sheets)
+      # 2. Open Tracking Service (Web App nhận tín hiệu mở email)
+      - name: 8. Tự động cập nhật các Deployment Active (Add-on & Tracking Web App)
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          npx clasp deploy --description "Release ${{ github.ref_name }}"
+          npx clasp deploy -i AKfycbyKfCVe_XvnrWl8i2Rw4TFAs-40XlJfGA3vtYKKYvJcHOPlVmRjsOfshrKpaIIwmYGH --description "Release ${{ github.ref_name }} (Add-on)"
+          npx clasp deploy -i AKfycbziVBkjablulWN_BQoh8TA8DeROesuBQtEKU_fMdvj0TMxYPuhZysXPO84etxNP-CI0 --description "Release ${{ github.ref_name }} (Open Tracking Web App)"

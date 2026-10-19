@@ -24,17 +24,17 @@ function showGuideDialog() {
   const html = HtmlService.createHtmlOutputFromFile('Guide')
     .setWidth(680)
     .setHeight(540);
-  SpreadsheetApp.getUi().showModalDialog(html, '📖 Hướng Dẫn Sử Dụng MailMerge Pro');
+  SpreadsheetApp.getUi().showModalDialog(html, '📖 Hướng Dẫn Sử Dụng MailMerge');
 }
 
 function getAutoConfig() {
   const sheet = SpreadsheetApp.getActiveSheet();
   const sheetName = sheet.getName();
-  
+
   const drafts = GmailApp.getDrafts();
   const draftSubjects = [];
   let defaultDraftSubject = "";
-  
+
   for (let i = 0; i < drafts.length; i++) {
     let subj = drafts[i].getMessage().getSubject();
     if (subj && !draftSubjects.includes(subj)) {
@@ -53,7 +53,7 @@ function getAutoConfig() {
     let activeEmail = Session.getActiveUser().getEmail();
     defaultSenderName = activeEmail ? activeEmail.split('@')[0] : "";
   }
-  
+
   function indexToLetter(columnNumber) {
     let letter = '';
     while (columnNumber > 0) {
@@ -67,23 +67,23 @@ function getAutoConfig() {
   let colTitle = "", colName = "", colEmail = "", colLink = "", colAttachment = "", colCc = "", colBcc = "";
   const columnsList = [];
   const lastCol = sheet.getLastColumn();
-  
+
   if (lastCol > 0) {
     const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    
-    const titleKeywords  = ["danh xưng", "danhxung", "chức danh", "xưng hô", "title", "chức vụ", "đại từ"];
-    const nameKeywords   = ["tên", "ten", "name", "họ tên", "họ và tên", "người nhận", "recipient"];
-    const emailKeywords  = ["email", "e-mail", "mail address", "địa chỉ email", "hòm thư", "mail to"];
-    const linkKeywords   = ["link", "liên kết", "url", "đường dẫn"];
+
+    const titleKeywords = ["danh xưng", "danhxung", "chức danh", "xưng hô", "title", "chức vụ", "đại từ"];
+    const nameKeywords = ["tên", "ten", "name", "họ tên", "họ và tên", "người nhận", "recipient"];
+    const emailKeywords = ["email", "e-mail", "mail address", "địa chỉ email", "hòm thư", "mail to"];
+    const linkKeywords = ["link", "liên kết", "url", "đường dẫn"];
     const attachKeywords = ["đính kèm", "attachment", "file", "tài liệu", "attach"];
-    const ccKeywords     = ["cc", "CC"];
-    const bccKeywords    = ["bcc", "BCC"];
+    const ccKeywords = ["cc", "CC"];
+    const bccKeywords = ["bcc", "BCC"];
     const ignoreKeywords = ["status", "trạng thái"];
 
     for (let i = 0; i < headers.length; i++) {
       let letter = indexToLetter(i + 1);
       let headerText = headers[i] ? headers[i].toString().trim() : "";
-      
+
       columnsList.push({
         letter: letter,
         name: headerText ? headerText : `(Cột ${letter})`
@@ -97,12 +97,12 @@ function getAutoConfig() {
       if (emailKeywords.some(kw => lowerHeader.includes(kw))) colEmail = letter;
       if (linkKeywords.some(kw => lowerHeader.includes(kw))) colLink = letter;
       if (attachKeywords.some(kw => lowerHeader.includes(kw))) colAttachment = letter;
-      
+
       if (ccKeywords.some(kw => lowerHeader === kw.toLowerCase())) colCc = letter;
       if (bccKeywords.some(kw => lowerHeader === kw.toLowerCase())) colBcc = letter;
     }
   }
-  
+
   return {
     appVersion: APP_VERSION,
     sheetName: sheetName,
@@ -141,7 +141,7 @@ function sendMergeEmailsFromDraft(config) {
     const data = sheet.getDataRange().getValues();
     const drafts = GmailApp.getDrafts();
     let templateMessage = null;
-    
+
     for (let i = 0; i < drafts.length; i++) {
       if (drafts[i].getMessage().getSubject() === config.draftSubject) {
         templateMessage = drafts[i].getMessage();
@@ -149,11 +149,11 @@ function sendMergeEmailsFromDraft(config) {
       }
     }
     if (!templateMessage) return "Lỗi: Không tìm thấy bản nháp có tiêu đề: " + config.draftSubject;
-    
-    const htmlTemplate = templateMessage.getBody(); 
+
+    const htmlTemplate = templateMessage.getBody();
     const draftCc = templateMessage.getCc() || "";
     const draftBcc = templateMessage.getBcc() || "";
-    
+
     const inlineImages = {};
     const inlineAtts = templateMessage.getAttachments({ includeInlineImages: true, includeAttachments: false });
     const draftAttachments = templateMessage.getAttachments({ includeInlineImages: false, includeAttachments: true });
@@ -188,15 +188,15 @@ function sendMergeEmailsFromDraft(config) {
         });
       }
     }
-    
+
     let sentCount = 0;
     let errorCount = 0;
-    const headers = data[0]; 
+    const headers = data[0];
     let statusColIndex = headers.indexOf(config.statusName || "Status");
-    
+
     if (statusColIndex === -1) {
-      statusColIndex = headers.length; 
-      sheet.getRange(1, statusColIndex + 1).setValue(config.statusName || "Status"); 
+      statusColIndex = headers.length;
+      sheet.getRange(1, statusColIndex + 1).setValue(config.statusName || "Status");
     }
 
     let delayMs = (parseFloat(config.delayTime) || 1) * 1000;
@@ -205,18 +205,18 @@ function sendMergeEmailsFromDraft(config) {
       if (sheet.isRowHiddenByFilter(i + 1) || sheet.isRowHiddenByUser(i + 1)) continue;
 
       let row = data[i];
-      let emailAddress = row[config.colEmail - 1]; 
-      let status = (row[statusColIndex] || "").toString().trim(); 
-      
+      let emailAddress = row[config.colEmail - 1];
+      let status = (row[statusColIndex] || "").toString().trim();
+
       if (status === "Đã gửi") continue;
 
       if (!emailAddress || emailAddress.toString().trim() === "") {
         sheet.getRange(i + 1, statusColIndex + 1).setValue("❌ Lỗi: Email rỗng");
-        errorCount++; continue; 
+        errorCount++; continue;
       }
       if (emailAddress.toString().indexOf("@") === -1) {
         sheet.getRange(i + 1, statusColIndex + 1).setValue("❌ Lỗi: Email sai định dạng");
-        errorCount++; continue; 
+        errorCount++; continue;
       }
 
       try {
@@ -243,7 +243,7 @@ function sendMergeEmailsFromDraft(config) {
               let linkRegex = new RegExp("https?://(?:\\{\\{|%7B%7B)" + field.tag + "(?:\\}\\}|%7D%7D)", "gi");
               personalizedHtml = personalizedHtml.replace(linkRegex, value);
             }
-            let regex = new RegExp("(?:\\{\\{|%7B%7B)" + field.tag + "(?:\\}\\}|%7D%7D)", "gi"); 
+            let regex = new RegExp("(?:\\{\\{|%7B%7B)" + field.tag + "(?:\\}\\}|%7D%7D)", "gi");
             personalizedHtml = personalizedHtml.replace(regex, value);
           }
         });
@@ -264,7 +264,7 @@ function sendMergeEmailsFromDraft(config) {
         let emailOptions = { htmlBody: personalizedHtml };
         if (Object.keys(inlineImages).length > 0) emailOptions.inlineImages = inlineImages;
         if (config.senderName && config.senderName.trim() !== "") emailOptions.name = config.senderName;
-        
+
         let finalCc = draftCc;
         if (config.colCc > 0) {
           let sheetCc = row[config.colCc - 1];
@@ -274,7 +274,7 @@ function sendMergeEmailsFromDraft(config) {
           }
         }
         if (finalCc) emailOptions.cc = finalCc;
-        
+
         let finalBcc = draftBcc;
         if (config.colBcc > 0) {
           let sheetBcc = row[config.colBcc - 1];
@@ -293,14 +293,14 @@ function sendMergeEmailsFromDraft(config) {
         if (config.colAttachment > 0) {
           let cellValue = row[config.colAttachment - 1] || "";
           if (cellValue.toString().trim() !== "") {
-            let links = cellValue.toString().split(/[,;\n]+/); 
+            let links = cellValue.toString().split(/[,;\n]+/);
             let hasError = false;
 
             for (let k = 0; k < links.length; k++) {
               let url = links[k].trim();
               if (url === "") continue;
 
-              let fileIdMatch = url.match(/[-\w]{25,}/); 
+              let fileIdMatch = url.match(/[-\w]{25,}/);
               if (fileIdMatch && fileIdMatch[0]) {
                 try {
                   let file = DriveApp.getFileById(fileIdMatch[0]);
@@ -315,7 +315,7 @@ function sendMergeEmailsFromDraft(config) {
             if (hasError) {
               sheet.getRange(i + 1, statusColIndex + 1).setValue("❌ Lỗi đính kèm: Link file lỗi hoặc chưa cấp quyền");
               errorCount++;
-              continue; 
+              continue;
             }
           }
         }
@@ -324,16 +324,16 @@ function sendMergeEmailsFromDraft(config) {
 
         GmailApp.sendEmail(emailAddress, config.draftSubject, "", emailOptions);
         sheet.getRange(i + 1, statusColIndex + 1).setValue("Đã gửi");
-        SpreadsheetApp.flush(); 
+        SpreadsheetApp.flush();
         sentCount++;
-        Utilities.sleep(delayMs); 
+        Utilities.sleep(delayMs);
 
       } catch (error) {
         sheet.getRange(i + 1, statusColIndex + 1).setValue("Lỗi gửi: " + error.message);
         errorCount++;
       }
     }
-    
+
     if (sentCount === 0 && errorCount > 0) return `Không có email nào được gửi. Có ${errorCount} dòng bị lỗi.`;
     if (errorCount > 0) return `Đã gửi thành công ${sentCount} email. Bỏ qua ${errorCount} dòng lỗi.`;
     return `Đã gửi thành công toàn bộ ${sentCount} email.`;
@@ -455,7 +455,7 @@ function sendTestEmail(config) {
             try {
               let file = DriveApp.getFileById(fileIdMatch[0]);
               attachmentsArray.push(file.getBlob());
-            } catch (err) {}
+            } catch (err) { }
           }
         }
       }
