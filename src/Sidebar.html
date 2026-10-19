@@ -1,414 +1,525 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <base target="_top">
-    <style>
-      body { font-family: Arial, sans-serif; padding: 15px; background-color: #f8f9fa; margin: 0; }
-      .form-group { margin-bottom: 12px; }
-      label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; color: #333;}
-      input[type="text"], input[type="number"], select { width: 100%; padding: 8px 30px 8px 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; background-color: white; font-size: 13px; }
-      
-      select.col-select, select#draftSubject {
-        font-weight: bold; color: #1a73e8; cursor: pointer;
-        appearance: none; -webkit-appearance: none; -moz-appearance: none;
-        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="%231a73e8"><path d="M7 10l5 5 5-5z"/></svg>');
-        background-repeat: no-repeat;
-        background-position: right 10px center;
-      }
-      select#draftSubject { color: #202124; }
 
-      .syntax-note { font-size: 11px; color: #d93025; font-style: italic; display: block; margin-top: 4px; text-align: center;}
-      .req { color: red; font-size: 14px; font-weight: bold;} 
-      
-      .alert-box { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; padding: 10px; border-radius: 5px; font-size: 12px; margin-bottom: 15px; line-height: 1.4;}
-      .alert-box strong { color: #d93025; }
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 15px;
+      background-color: #f8f9fa;
+      margin: 0;
+    }
 
-      .btn { padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.3s; width: 100%; font-size: 12px;}
-      .btn-primary { background-color: #0F9D58; color: white; }
-      .btn-primary:hover { background-color: #0b8043; }
-      .btn-secondary { background-color: #fbbc04; color: #202124; }
-      .btn-secondary:hover { background-color: #e0a800; }
-      .btn-schedule { background-color: #673ab7; color: white; }
-      .btn-schedule:hover { background-color: #512da8; }
-      .btn:disabled { background-color: #ccc; cursor: not-allowed; color: #666; }
-      
-      #message { margin-top: 15px; font-size: 13px; font-weight: bold; text-align: center;}
-      #loading { text-align: center; font-size: 13px; color: #1a73e8; font-style: italic; margin-bottom: 15px;}
-    </style>
-  </head>
-  <body>
+    .form-group {
+      margin-bottom: 12px;
+    }
 
-    <div id="loading">Đang quét Sheet & Gmail tự động...</div>
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+      font-size: 13px;
+      color: #333;
+    }
 
-    <div id="main-form" style="display: none;">
-      
-      <div class="alert-box">
-        <b><span class="req">*</span> Lưu ý từ Google:</b><br>
-        • Free Gmail: Max <b>~500</b> mail/ngày.<br>
-        • G-Workspace: Max <b>~1500</b> mail/ngày.<br>
-        Gửi vượt mức sẽ bị Google khóa 24h.
-      </div>
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 8px 30px 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      background-color: white;
+      font-size: 13px;
+    }
 
-      <div class="form-group">
-        <label>Chọn Bản nháp (Draft): <span class="req">*</span></label>
-        <select id="draftSubject"></select>
-      </div>
+    select.col-select,
+    select#draftSubject {
+      font-weight: bold;
+      color: #1a73e8;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="%231a73e8"><path d="M7 10l5 5 5-5z"/></svg>');
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+    }
 
-      <div class="form-group">
-        <label>Tên người gửi (Có thể chỉnh sửa):</label>
-        <input type="text" id="senderName" placeholder="Đang nhận diện tên Gmail...">
-      </div>
+    select#draftSubject {
+      color: #202124;
+    }
 
-      <div class="form-group">
-        <label>Tên Tab Sheet: <span class="req">*</span></label>
-        <input type="text" id="sheetName">
-      </div>
+    .syntax-note {
+      font-size: 11px;
+      color: #d93025;
+      font-style: italic;
+      display: block;
+      margin-top: 4px;
+      text-align: center;
+    }
 
-      <div class="form-group">
-        <label>Cột Email (Người nhận chính): <span class="req">*</span></label>
-        <select id="colEmail" class="col-select"></select>
-      </div>
+    .req {
+      color: red;
+      font-size: 14px;
+      font-weight: bold;
+    }
 
-      <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-        <div class="form-group" style="flex: 1; margin-bottom: 0;">
-          <label>Cột CC:</label>
-          <select id="colCc" class="col-select"></select>
-        </div>
-        <div class="form-group" style="flex: 1; margin-bottom: 0;">
-          <label>Cột BCC:</label>
-          <select id="colBcc" class="col-select"></select>
-        </div>
-      </div>
+    .alert-box {
+      background-color: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeeba;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      margin-bottom: 15px;
+      line-height: 1.4;
+    }
 
-      <div style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 10px;">
-        <label style="font-size: 12px; color: #666; margin-bottom: 8px;">CÁC CỘT THÔNG TIN CÁ NHÂN HÓA (TÙY CHỌN):</label>
-        
-        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label>Cột Danh xưng:</label>
-            <select id="colTitle" class="col-select"></select>
-            <span class="syntax-note">{{danhxung}}</span>
-          </div>
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label>Cột Tên:</label>
-            <select id="colName" class="col-select"></select>
-            <span class="syntax-note">{{ten}}</span>
-          </div>
-        </div>
+    .alert-box strong {
+      color: #d93025;
+    }
 
-        <div class="form-group" style="margin-bottom: 15px;">
-          <label>Cột Link (Hyperlink):</label>
-          <select id="colLink" class="col-select"></select>
-          <span class="syntax-note">{{link}}</span>
-        </div>
+    .btn {
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.3s;
+      width: 100%;
+      font-size: 12px;
+    }
 
-        <div class="form-group" style="margin-bottom: 15px;">
-          <label>Cột Đính kèm File (Attach files):</label>
-          <select id="colAttachment" class="col-select"></select>
-          <span class="syntax-note">Dán link Google Drive của file vào cột này</span>
-        </div>
+    .btn-primary {
+      background-color: #0F9D58;
+      color: white;
+    }
 
-        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label>Cột Khác 1:</label>
-            <select id="colOther1" class="col-select"></select>
-            <span class="syntax-note">{{other1}}</span>
-          </div>
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label>Cột Khác 2:</label>
-            <select id="colOther2" class="col-select"></select>
-            <span class="syntax-note">{{other2}}</span>
-          </div>
-        </div>
-        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label>Cột Khác 3:</label>
-            <select id="colOther3" class="col-select"></select>
-            <span class="syntax-note">{{other3}}</span>
-          </div>
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label>Cột Khác 4:</label>
-            <select id="colOther4" class="col-select"></select>
-            <span class="syntax-note">{{other4}}</span>
-          </div>
-        </div>
-        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label>Cột Khác 5:</label>
-            <select id="colOther5" class="col-select"></select>
-            <span class="syntax-note">{{other5}}</span>
-          </div>
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label>Cột Khác 6:</label>
-            <select id="colOther6" class="col-select"></select>
-            <span class="syntax-note">{{other6}}</span>
-          </div>
-        </div>
-        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label>Cột Khác 7:</label>
-            <select id="colOther7" class="col-select"></select>
-            <span class="syntax-note">{{other7}}</span>
-          </div>
-          <div class="form-group" style="flex: 1; margin-bottom: 0;">
-            <label>Cột Khác 8:</label>
-            <select id="colOther8" class="col-select"></select>
-            <span class="syntax-note">{{other8}}</span>
-          </div>
-        </div>
-      </div>
+    .btn-primary:hover {
+      background-color: #0b8043;
+    }
 
-      <div style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 10px;">
-        <div class="form-group" style="margin-bottom: 5px;">
-          <label>⏱ Thời gian chờ giữa 2 email (giây):</label>
-          <input type="number" id="delayTime" min="0.5" max="5" step="0.1" style="text-align: center; font-weight: bold; color: #0F9D58;">
-          <span style="font-size: 11px; color: #666; display: block; margin-top: 4px;">Khuyến nghị: 1-2 giây để chống bộ lọc Spam.</span>
-        </div>
-      </div>
+    .btn-secondary {
+      background-color: #fbbc04;
+      color: #202124;
+    }
 
-      <button class="btn btn-secondary" id="previewBtn" onclick="openPreview()" style="margin-top: 15px;">
-        PREVIEW
-      </button>
+    .btn-secondary:hover {
+      background-color: #e0a800;
+    }
 
-      <div style="display: flex; gap: 10px; margin-top: 10px;">
-        <button class="btn" id="testBtn" onclick="runTestMail()" style="flex: 1; background-color: #1a73e8; color: white;">
-          SEND TEST EMAIL
-        </button>
-        <button class="btn btn-primary" id="runBtn" onclick="runScript()" style="flex: 1;">
-          SEND EMAIL
-        </button>
-      </div>
+    .btn-schedule {
+      background-color: #673ab7;
+      color: white;
+    }
 
-      <button class="btn btn-schedule" id="scheduleBtn" onclick="openScheduleManager()" style="margin-top: 10px;">
-        ⏰ SCHEDULE MANAGER
-      </button>
+    .btn-schedule:hover {
+      background-color: #512da8;
+    }
 
-      <div id="message"></div>
+    .btn:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+      color: #666;
+    }
+
+    #message {
+      margin-top: 15px;
+      font-size: 13px;
+      font-weight: bold;
+      text-align: center;
+    }
+
+    #loading {
+      text-align: center;
+      font-size: 13px;
+      color: #1a73e8;
+      font-style: italic;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="loading">Đang quét Sheet & Gmail tự động...</div>
+
+  <div id="main-form" style="display: none;">
+
+    <div class="alert-box">
+      <b><span class="req">*</span> Lưu ý từ Google:</b><br>
+      • Free Gmail: Max <b>~500</b> mail/ngày.<br>
+      • G-Workspace: Max <b>~1500</b> mail/ngày.<br>
+      Gửi vượt mức sẽ bị Google khóa 24h.
     </div>
 
-    <div style="text-align: center; font-size: 11px; color: #888; margin-top: 15px;">
-      MailMerge-VietHope v<span id="versionText" style="font-weight: bold; color: #1a73e8;">...</span>
+    <div class="form-group">
+      <label>Chọn Bản nháp (Draft): <span class="req">*</span></label>
+      <select id="draftSubject"></select>
     </div>
-    <script>
-      let currentColumnsList = [];
 
-      window.onload = function() {
-        google.script.run
-          .withSuccessHandler(function(autoData) {
-            if (autoData.appVersion) {
-              document.getElementById('versionText').innerText = autoData.appVersion;
-            }
+    <div class="form-group">
+      <label>Tên người gửi (Có thể chỉnh sửa):</label>
+      <input type="text" id="senderName" placeholder="Đang nhận diện tên Gmail...">
+    </div>
 
-            currentColumnsList = autoData.columnsList || [];
+    <div class="form-group">
+      <label>Tên Tab Sheet: <span class="req">*</span></label>
+      <input type="text" id="sheetName">
+    </div>
 
-            const draftSelect = document.getElementById('draftSubject');
-            draftSelect.innerHTML = "";
-            if (autoData.draftSubjects && autoData.draftSubjects.length > 0) {
-              autoData.draftSubjects.forEach(subj => {
-                const opt = document.createElement("option");
-                opt.value = subj;
-                opt.text = subj;
-                if (subj === autoData.draftSubject) opt.selected = true;
-                draftSelect.appendChild(opt);
-              });
-            } else {
-              const opt = document.createElement("option");
-              opt.value = "";
-              opt.text = "-- Không tìm thấy bản nháp Gmail --";
-              draftSelect.appendChild(opt);
-            }
+    <div class="form-group">
+      <label>Cột Email (Người nhận chính): <span class="req">*</span></label>
+      <select id="colEmail" class="col-select"></select>
+    </div>
 
-            document.getElementById('senderName').value = autoData.senderName || "";
-            document.getElementById('sheetName').value = autoData.sheetName;
-            
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+      <div class="form-group" style="flex: 1; margin-bottom: 0;">
+        <label>Cột CC:</label>
+        <select id="colCc" class="col-select"></select>
+      </div>
+      <div class="form-group" style="flex: 1; margin-bottom: 0;">
+        <label>Cột BCC:</label>
+        <select id="colBcc" class="col-select"></select>
+      </div>
+    </div>
 
-            populateSelect('colEmail', currentColumnsList, autoData.colEmail, true);
-            populateSelect('colCc', currentColumnsList, autoData.colCc, false);
-            populateSelect('colBcc', currentColumnsList, autoData.colBcc, false);
-            populateSelect('colTitle', currentColumnsList, autoData.colTitle, false);
-            populateSelect('colName', currentColumnsList, autoData.colName, false);
-            populateSelect('colLink', currentColumnsList, autoData.colLink, false);
-            populateSelect('colAttachment', currentColumnsList, autoData.colAttachment, false);
+    <div style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 10px;">
+      <label style="font-size: 12px; color: #666; margin-bottom: 8px;">CÁC CỘT THÔNG TIN CÁ NHÂN HÓA (TÙY CHỌN):</label>
 
-            for (let i = 1; i <= 8; i++) {
-              populateSelect('colOther' + i, currentColumnsList, autoData['colOther' + i], false);
-            }
-            
-            document.getElementById('delayTime').value = autoData.delayTime || 1;
-            
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('main-form').style.display = 'block';
-          })
-          .getAutoConfig();
-      };
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Cột Danh xưng:</label>
+          <select id="colTitle" class="col-select"></select>
+          <span class="syntax-note">{{danhxung}}</span>
+        </div>
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Cột Tên:</label>
+          <select id="colName" class="col-select"></select>
+          <span class="syntax-note">{{ten}}</span>
+        </div>
+      </div>
 
-      function populateSelect(selectId, columns, selectedLetter, isRequired) {
-        const select = document.getElementById(selectId);
-        select.innerHTML = "";
-        
-        const defaultOpt = document.createElement("option");
-        defaultOpt.value = "";
-        defaultOpt.text = isRequired ? "-- Chọn cột --" : "- (Không dùng) -";
-        select.appendChild(defaultOpt);
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Cột Link (Hyperlink):</label>
+        <select id="colLink" class="col-select"></select>
+        <span class="syntax-note">{{link}}</span>
+      </div>
 
-        columns.forEach(col => {
-          const opt = document.createElement("option");
-          opt.value = col.letter;
-          opt.text = `Cột ${col.letter}: ${col.name}`;
-          if (col.letter === selectedLetter) {
-            opt.selected = true;
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label>Cột Đính kèm File (Attach files):</label>
+        <select id="colAttachment" class="col-select"></select>
+        <span class="syntax-note">Dán link Google Drive của file vào cột này</span>
+      </div>
+
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Cột Khác 1:</label>
+          <select id="colOther1" class="col-select"></select>
+          <span class="syntax-note">{{other1}}</span>
+        </div>
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Cột Khác 2:</label>
+          <select id="colOther2" class="col-select"></select>
+          <span class="syntax-note">{{other2}}</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Cột Khác 3:</label>
+          <select id="colOther3" class="col-select"></select>
+          <span class="syntax-note">{{other3}}</span>
+        </div>
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Cột Khác 4:</label>
+          <select id="colOther4" class="col-select"></select>
+          <span class="syntax-note">{{other4}}</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Cột Khác 5:</label>
+          <select id="colOther5" class="col-select"></select>
+          <span class="syntax-note">{{other5}}</span>
+        </div>
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Cột Khác 6:</label>
+          <select id="colOther6" class="col-select"></select>
+          <span class="syntax-note">{{other6}}</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Cột Khác 7:</label>
+          <select id="colOther7" class="col-select"></select>
+          <span class="syntax-note">{{other7}}</span>
+        </div>
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Cột Khác 8:</label>
+          <select id="colOther8" class="col-select"></select>
+          <span class="syntax-note">{{other8}}</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 10px;">
+      <div class="form-group" style="margin-bottom: 5px;">
+        <label>⏱ Thời gian chờ giữa 2 email (giây):</label>
+        <input type="number" id="delayTime" min="0.5" max="5" step="0.1"
+          style="text-align: center; font-weight: bold; color: #0F9D58;">
+        <span style="font-size: 11px; color: #666; display: block; margin-top: 4px;">Khuyến nghị: 1-2 giây để chống bộ
+          lọc Spam.</span>
+      </div>
+    </div>
+
+    <button class="btn btn-secondary" id="previewBtn" onclick="openPreview()" style="margin-top: 15px;">
+      PREVIEW
+    </button>
+
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+      <button class="btn" id="testBtn" onclick="runTestMail()"
+        style="flex: 1; background-color: #1a73e8; color: white;">
+        SEND TEST EMAIL
+      </button>
+      <button class="btn btn-primary" id="runBtn" onclick="runScript()" style="flex: 1;">
+        SEND EMAIL
+      </button>
+    </div>
+
+    <button class="btn btn-schedule" id="scheduleBtn" onclick="openScheduleManager()" style="margin-top: 10px;">
+      ⏰ SCHEDULE MANAGER
+    </button>
+
+    <div id="message"></div>
+  </div>
+
+  <div style="text-align: center; font-size: 11px; color: #888; margin-top: 15px;">
+    MailMerge v<span id="versionText" style="font-weight: bold; color: #1a73e8;">...</span>
+  </div>
+  <script>
+    let currentColumnsList = [];
+
+    window.onload = function () {
+      google.script.run
+        .withSuccessHandler(function (autoData) {
+          if (autoData.appVersion) {
+            document.getElementById('versionText').innerText = autoData.appVersion;
           }
-          select.appendChild(opt);
-        });
-      }
 
-      function letterToNumber(letter) {
-        if (!letter) return 0;
-        let column = 0; let length = letter.length;
-        for (let i = 0; i < length; i++) {
-          column += (letter.charCodeAt(i) - 64) * Math.pow(26, length - i - 1);
+          currentColumnsList = autoData.columnsList || [];
+
+          const draftSelect = document.getElementById('draftSubject');
+          draftSelect.innerHTML = "";
+          if (autoData.draftSubjects && autoData.draftSubjects.length > 0) {
+            autoData.draftSubjects.forEach(subj => {
+              const opt = document.createElement("option");
+              opt.value = subj;
+              opt.text = subj;
+              if (subj === autoData.draftSubject) opt.selected = true;
+              draftSelect.appendChild(opt);
+            });
+          } else {
+            const opt = document.createElement("option");
+            opt.value = "";
+            opt.text = "-- Không tìm thấy bản nháp Gmail --";
+            draftSelect.appendChild(opt);
+          }
+
+          document.getElementById('senderName').value = autoData.senderName || "";
+          document.getElementById('sheetName').value = autoData.sheetName;
+
+
+          populateSelect('colEmail', currentColumnsList, autoData.colEmail, true);
+          populateSelect('colCc', currentColumnsList, autoData.colCc, false);
+          populateSelect('colBcc', currentColumnsList, autoData.colBcc, false);
+          populateSelect('colTitle', currentColumnsList, autoData.colTitle, false);
+          populateSelect('colName', currentColumnsList, autoData.colName, false);
+          populateSelect('colLink', currentColumnsList, autoData.colLink, false);
+          populateSelect('colAttachment', currentColumnsList, autoData.colAttachment, false);
+
+          for (let i = 1; i <= 8; i++) {
+            populateSelect('colOther' + i, currentColumnsList, autoData['colOther' + i], false);
+          }
+
+          document.getElementById('delayTime').value = autoData.delayTime || 1;
+
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('main-form').style.display = 'block';
+        })
+        .getAutoConfig();
+    };
+
+    function populateSelect(selectId, columns, selectedLetter, isRequired) {
+      const select = document.getElementById(selectId);
+      select.innerHTML = "";
+
+      const defaultOpt = document.createElement("option");
+      defaultOpt.value = "";
+      defaultOpt.text = isRequired ? "-- Chọn cột --" : "- (Không dùng) -";
+      select.appendChild(defaultOpt);
+
+      columns.forEach(col => {
+        const opt = document.createElement("option");
+        opt.value = col.letter;
+        opt.text = `Cột ${col.letter}: ${col.name}`;
+        if (col.letter === selectedLetter) {
+          opt.selected = true;
         }
-        return column;
+        select.appendChild(opt);
+      });
+    }
+
+    function letterToNumber(letter) {
+      if (!letter) return 0;
+      let column = 0; let length = letter.length;
+      for (let i = 0; i < length; i++) {
+        column += (letter.charCodeAt(i) - 64) * Math.pow(26, length - i - 1);
+      }
+      return column;
+    }
+
+    function getConfigData() {
+      return {
+        draftSubject: document.getElementById('draftSubject').value,
+        senderName: document.getElementById('senderName').value,
+        sheetName: document.getElementById('sheetName').value,
+
+        colEmail: letterToNumber(document.getElementById('colEmail').value),
+        colCc: letterToNumber(document.getElementById('colCc').value),
+        colBcc: letterToNumber(document.getElementById('colBcc').value),
+
+        colTitle: letterToNumber(document.getElementById('colTitle').value),
+        colName: letterToNumber(document.getElementById('colName').value),
+
+        colLink: letterToNumber(document.getElementById('colLink').value),
+        colAttachment: letterToNumber(document.getElementById('colAttachment').value),
+
+        colOther1: letterToNumber(document.getElementById('colOther1').value),
+        colOther2: letterToNumber(document.getElementById('colOther2').value),
+        colOther3: letterToNumber(document.getElementById('colOther3').value),
+        colOther4: letterToNumber(document.getElementById('colOther4').value),
+        colOther5: letterToNumber(document.getElementById('colOther5').value),
+        colOther6: letterToNumber(document.getElementById('colOther6').value),
+        colOther7: letterToNumber(document.getElementById('colOther7').value),
+        colOther8: letterToNumber(document.getElementById('colOther8').value),
+
+        delayTime: document.getElementById('delayTime').value,
+        statusName: "Status"
+      };
+    }
+
+    function openPreview() {
+      if (!document.getElementById('draftSubject').value || !document.getElementById('sheetName').value || !document.getElementById('colEmail').value) {
+        document.getElementById('message').innerText = "Vui lòng chọn đầy đủ các trường bắt buộc!";
+        document.getElementById('message').style.color = "#d93025";
+        return;
       }
 
-      function getConfigData() {
-        return {
-          draftSubject: document.getElementById('draftSubject').value,
-          senderName: document.getElementById('senderName').value,
-          sheetName: document.getElementById('sheetName').value,
-          
-          colEmail: letterToNumber(document.getElementById('colEmail').value),
-          colCc: letterToNumber(document.getElementById('colCc').value),
-          colBcc: letterToNumber(document.getElementById('colBcc').value),
-          
-          colTitle: letterToNumber(document.getElementById('colTitle').value),
-          colName: letterToNumber(document.getElementById('colName').value),
+      const previewBtn = document.getElementById('previewBtn');
+      previewBtn.disabled = true;
+      previewBtn.innerText = "LOADING...";
+      document.getElementById('message').innerText = "";
 
-          colLink: letterToNumber(document.getElementById('colLink').value),
-          colAttachment: letterToNumber(document.getElementById('colAttachment').value),
-          
-          colOther1: letterToNumber(document.getElementById('colOther1').value),
-          colOther2: letterToNumber(document.getElementById('colOther2').value),
-          colOther3: letterToNumber(document.getElementById('colOther3').value),
-          colOther4: letterToNumber(document.getElementById('colOther4').value),
-          colOther5: letterToNumber(document.getElementById('colOther5').value),
-          colOther6: letterToNumber(document.getElementById('colOther6').value),
-          colOther7: letterToNumber(document.getElementById('colOther7').value),
-          colOther8: letterToNumber(document.getElementById('colOther8').value),
-          
-          delayTime: document.getElementById('delayTime').value,
-          statusName: "Status"
-        };
-      }
+      const config = getConfigData();
 
-      function openPreview() {
-        if (!document.getElementById('draftSubject').value || !document.getElementById('sheetName').value || !document.getElementById('colEmail').value) {
-          document.getElementById('message').innerText = "Vui lòng chọn đầy đủ các trường bắt buộc!";
+      google.script.run
+        .withSuccessHandler(function () {
+          previewBtn.disabled = false;
+          previewBtn.innerText = "PREVIEW";
+        })
+        .withFailureHandler(function (error) {
+          document.getElementById('message').innerText = "Lỗi: " + error.message;
           document.getElementById('message').style.color = "#d93025";
-          return;
-        }
+          previewBtn.disabled = false;
+          previewBtn.innerText = "PREVIEW";
+        })
+        .openPreviewDialog(config);
+    }
 
-        const previewBtn = document.getElementById('previewBtn');
-        previewBtn.disabled = true;
-        previewBtn.innerText = "LOADING...";
-        document.getElementById('message').innerText = "";
+    function runTestMail() {
+      if (!document.getElementById('draftSubject').value || !document.getElementById('sheetName').value || !document.getElementById('colEmail').value) {
+        document.getElementById('message').innerText = "Vui lòng chọn đầy đủ các trường bắt buộc trước khi gửi thử!";
+        document.getElementById('message').style.color = "#d93025";
+        return;
+      }
 
-        const config = getConfigData();
+      const testBtn = document.getElementById('testBtn');
+      testBtn.disabled = true;
+      testBtn.innerText = "SENDING TEST...";
+      document.getElementById('message').innerText = "Đang gửi bản thử nghiệm...";
+      document.getElementById('message').style.color = "#1a73e8";
 
-        google.script.run
-          .withSuccessHandler(function() {
-            previewBtn.disabled = false;
-            previewBtn.innerText = "PREVIEW";
-          })
-          .withFailureHandler(function(error) {
-            document.getElementById('message').innerText = "Lỗi: " + error.message;
+      const config = getConfigData();
+
+      google.script.run
+        .withSuccessHandler(function (result) {
+          document.getElementById('message').innerText = result;
+          if (result.includes("thành công")) {
+            document.getElementById('message').style.color = "#0F9D58";
+          } else {
             document.getElementById('message').style.color = "#d93025";
-            previewBtn.disabled = false;
-            previewBtn.innerText = "PREVIEW";
-          })
-          .openPreviewDialog(config);
+          }
+          testBtn.disabled = false;
+          testBtn.innerText = "SEND TEST EMAIL";
+        })
+        .withFailureHandler(function (error) {
+          document.getElementById('message').innerText = "Lỗi: " + error.message;
+          document.getElementById('message').style.color = "#d93025";
+          testBtn.disabled = false;
+          testBtn.innerText = "SEND TEST EMAIL";
+        })
+        .sendTestEmail(config);
+    }
+
+    function runScript() {
+      if (!document.getElementById('draftSubject').value || !document.getElementById('sheetName').value || !document.getElementById('colEmail').value) {
+        document.getElementById('message').innerText = "Vui lòng chọn đầy đủ các trường bắt buộc!";
+        document.getElementById('message').style.color = "#d93025";
+        return;
       }
 
-      function runTestMail() {
-        if (!document.getElementById('draftSubject').value || !document.getElementById('sheetName').value || !document.getElementById('colEmail').value) {
-          document.getElementById('message').innerText = "Vui lòng chọn đầy đủ các trường bắt buộc trước khi gửi thử!";
-          document.getElementById('message').style.color = "#d93025";
-          return;
-        }
+      const runBtn = document.getElementById('runBtn');
+      runBtn.disabled = true;
+      runBtn.innerText = "SENDING...";
+      document.getElementById('message').innerText = "Đang gửi email hàng loạt...";
+      document.getElementById('message').style.color = "#1a73e8";
 
-        const testBtn = document.getElementById('testBtn');
-        testBtn.disabled = true;
-        testBtn.innerText = "SENDING TEST...";
-        document.getElementById('message').innerText = "Đang gửi bản thử nghiệm...";
-        document.getElementById('message').style.color = "#1a73e8";
+      const config = getConfigData();
 
-        const config = getConfigData();
-
-        google.script.run
-          .withSuccessHandler(function(result) {
-            document.getElementById('message').innerText = result;
-            if (result.includes("thành công")) {
-              document.getElementById('message').style.color = "#0F9D58";
-            } else {
-              document.getElementById('message').style.color = "#d93025";
-            }
-            testBtn.disabled = false;
-            testBtn.innerText = "SEND TEST EMAIL";
-          })
-          .withFailureHandler(function(error) {
-            document.getElementById('message').innerText = "Lỗi: " + error.message;
+      google.script.run
+        .withSuccessHandler(function (result) {
+          document.getElementById('message').innerText = result;
+          if (result.includes("Hoàn tất") || result.includes("Đã gửi thành công")) {
+            document.getElementById('message').style.color = "#0F9D58";
+          } else {
             document.getElementById('message').style.color = "#d93025";
-            testBtn.disabled = false;
-            testBtn.innerText = "SEND TEST EMAIL";
-          })
-          .sendTestEmail(config);
-      }
-
-      function runScript() {
-        if (!document.getElementById('draftSubject').value || !document.getElementById('sheetName').value || !document.getElementById('colEmail').value) {
-          document.getElementById('message').innerText = "Vui lòng chọn đầy đủ các trường bắt buộc!";
+          }
+          runBtn.disabled = false;
+          runBtn.innerText = "SEND EMAIL";
+        })
+        .withFailureHandler(function (error) {
+          document.getElementById('message').innerText = "Lỗi: " + error.message;
           document.getElementById('message').style.color = "#d93025";
-          return;
-        }
+          runBtn.disabled = false;
+          runBtn.innerText = "SEND EMAIL";
+        })
+        .sendMergeEmailsFromDraft(config);
+    }
 
-        const runBtn = document.getElementById('runBtn');
-        runBtn.disabled = true;
-        runBtn.innerText = "SENDING...";
-        document.getElementById('message').innerText = "Đang gửi email hàng loạt...";
-        document.getElementById('message').style.color = "#1a73e8";
-
-        const config = getConfigData();
-
-        google.script.run
-          .withSuccessHandler(function(result) {
-            document.getElementById('message').innerText = result;
-            if (result.includes("Hoàn tất") || result.includes("Đã gửi thành công")) {
-              document.getElementById('message').style.color = "#0F9D58";
-            } else {
-              document.getElementById('message').style.color = "#d93025";
-            }
-            runBtn.disabled = false;
-            runBtn.innerText = "SEND EMAIL";
-          })
-          .withFailureHandler(function(error) {
-            document.getElementById('message').innerText = "Lỗi: " + error.message;
-            document.getElementById('message').style.color = "#d93025";
-            runBtn.disabled = false;
-            runBtn.innerText = "SEND EMAIL";
-          })
-          .sendMergeEmailsFromDraft(config);
+    function openScheduleManager() {
+      if (!document.getElementById('draftSubject').value || !document.getElementById('sheetName').value || !document.getElementById('colEmail').value) {
+        document.getElementById('message').innerText = "Vui lòng chọn các trường bắt buộc trước khi mở lịch!";
+        document.getElementById('message').style.color = "#d93025";
+        return;
       }
+      document.getElementById('message').innerText = "";
+      const config = getConfigData();
+      google.script.run.openScheduleManagerDialog(config);
+    }
+  </script>
+</body>
 
-      function openScheduleManager() {
-        if (!document.getElementById('draftSubject').value || !document.getElementById('sheetName').value || !document.getElementById('colEmail').value) {
-          document.getElementById('message').innerText = "Vui lòng chọn các trường bắt buộc trước khi mở lịch!";
-          document.getElementById('message').style.color = "#d93025";
-          return;
-        }
-        document.getElementById('message').innerText = "";
-        const config = getConfigData();
-        google.script.run.openScheduleManagerDialog(config);
-      }
-    </script>
-  </body>
 </html>

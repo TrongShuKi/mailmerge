@@ -41,9 +41,9 @@ function replaceNameTag(template, name) {
   return template.replace(/\\{\\{ten\\}\\}/gi, name || "");
 }
 
-describe('Kiểm tra logic cốt lõi của MailMerge-VietHope', () => {
+describe('Kiểm tra logic cốt lõi của MailMerge', () => {
   test('Phát hiện đúng email hợp lệ và email lỗi', () => {
-    expect(isValidEmail('sinhvien@viethope.org')).toBe(true);
+    expect(isValidEmail('demo.user@example.com')).toBe(true);
     expect(isValidEmail('email_khong_hop_le')).toBe(false);
     expect(isValidEmail('')).toBe(false);
   });
@@ -57,7 +57,7 @@ describe('Kiểm tra logic cốt lõi của MailMerge-VietHope', () => {
 `;
 
 // 4. Nội dung tệp cấu hình GitHub Actions (.github/workflows/deploy.yml)
-const workflowContent = `name: MailMerge-VietHope CI/CD
+const workflowContent = `name: MailMerge CI/CD
 
 # Kích hoạt tự động mỗi khi đẩy code (push) lên nhánh main
 on:
@@ -102,45 +102,45 @@ jobs:
 
 // HÀM THỰC THI TẠO TỆP VÀ THƯ MỤC
 function setupProject() {
-    console.log('🚀 Bắt đầu khởi tạo cấu trúc CI/CD cho MailMerge-VietHope...\n');
+  console.log('🚀 Bắt đầu khởi tạo cấu trúc CI/CD cho MailMerge...\n');
 
-    // Tạo các thư mục cần thiết nếu chưa có
-    const dirs = ['tests', path.join('.github', 'workflows')];
-    dirs.forEach(dir => {
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-            console.log(`📁 Đã tạo thư mục: ${dir}`);
-        }
-    });
-
-    // Ghi các tệp cấu hình
-    fs.writeFileSync('.gitignore', gitignoreContent.trim() + '\n');
-    console.log('✅ Đã tạo tệp: .gitignore');
-
-    fs.writeFileSync('.claspignore', claspignoreContent.trim() + '\n');
-    console.log('✅ Đã tạo tệp: .claspignore');
-
-    fs.writeFileSync(path.join('tests', 'mailmerge.test.js'), testContent.trim() + '\n');
-    console.log('✅ Đã tạo tệp kiểm thử: tests/mailmerge.test.js');
-
-    fs.writeFileSync(path.join('.github', 'workflows', 'deploy.yml'), workflowContent.trim() + '\n');
-    console.log('✅ Đã tạo tệp GitHub Actions: .github/workflows/deploy.yml');
-
-    // Cập nhật lệnh chạy trong package.json
-    const pkgPath = path.join(process.cwd(), 'package.json');
-    if (fs.existsSync(pkgPath)) {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-        pkg.scripts = {
-            ...pkg.scripts,
-            "test": "jest",
-            "push": "clasp push",
-            "pull": "clasp pull"
-        };
-        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-        console.log('✅ Đã cập nhật các lệnh chạy vào: package.json');
+  // Tạo các thư mục cần thiết nếu chưa có
+  const dirs = ['tests', path.join('.github', 'workflows')];
+  dirs.forEach(dir => {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      console.log(`📁 Đã tạo thư mục: ${dir}`);
     }
+  });
 
-    console.log('\n🎉 HOÀN TẤT! Cấu trúc CI/CD đã sẵn sàng.');
+  // Ghi các tệp cấu hình
+  fs.writeFileSync('.gitignore', gitignoreContent.trim() + '\n');
+  console.log('✅ Đã tạo tệp: .gitignore');
+
+  fs.writeFileSync('.claspignore', claspignoreContent.trim() + '\n');
+  console.log('✅ Đã tạo tệp: .claspignore');
+
+  fs.writeFileSync(path.join('tests', 'mailmerge.test.js'), testContent.trim() + '\n');
+  console.log('✅ Đã tạo tệp kiểm thử: tests/mailmerge.test.js');
+
+  fs.writeFileSync(path.join('.github', 'workflows', 'deploy.yml'), workflowContent.trim() + '\n');
+  console.log('✅ Đã tạo tệp GitHub Actions: .github/workflows/deploy.yml');
+
+  // Cập nhật lệnh chạy trong package.json
+  const pkgPath = path.join(process.cwd(), 'package.json');
+  if (fs.existsSync(pkgPath)) {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    pkg.scripts = {
+      ...pkg.scripts,
+      "test": "jest",
+      "push": "clasp push",
+      "pull": "clasp pull"
+    };
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+    console.log('✅ Đã cập nhật các lệnh chạy vào: package.json');
+  }
+
+  console.log('\n🎉 HOÀN TẤT! Cấu trúc CI/CD đã sẵn sàng.');
 }
 
 setupProject();

@@ -1,5 +1,5 @@
 # Tên của quy trình tự động hiển thị trên tab Actions của GitHub
-name: MailMerge-VietHope CI/CD
+name: MailMerge CI/CD
 
 # SỰ KIỆN KÍCH HOẠT (Trigger):
 # Tự động đánh thức Robot mỗi khi bạn chạy lệnh 'git push' lên nhánh 'main'

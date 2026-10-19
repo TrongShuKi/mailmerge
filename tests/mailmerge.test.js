@@ -14,9 +14,9 @@ function replaceNameTag(template, name) {
   return template.replace(/\{\{ten\}\}/gi, name || "");
 }
 
-describe('Kiểm tra logic cốt lõi của MailMerge-VietHope', () => {
+describe('Kiểm tra logic cốt lõi của MailMerge', () => {
   test('Phát hiện đúng email hợp lệ và email lỗi', () => {
-    expect(isValidEmail('sinhvien@viethope.org')).toBe(true);
+    expect(isValidEmail('demo.user@example.com')).toBe(true);
     expect(isValidEmail('email_khong_hop_le')).toBe(false);
     expect(isValidEmail('')).toBe(false);
   });
