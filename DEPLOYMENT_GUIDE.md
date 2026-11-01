@@ -8,14 +8,14 @@
 ## 📌 TÓM TẮT QUY TRÌNH (QUICK CHEAT SHEET)
 
 ```powershell
-# 1. Kiểm tra tag hiện tại
+# 1. Kiểm tra tag phiên bản hiện tại
 git describe --tags --abbrev=0
 
-# 2. Chạy test xác nhận
+# 2. Cập nhật APP_VERSION trong src/MailMergePro.js & chạy test
 npm test
 
 # 3. Đóng gói & Đẩy code lên GitHub
-git add src/MailMergePro.js src/Sidebar.html package.json
+git add src/MailMergePro.js package.json
 git commit -m "chore(release): bump version to vX.Y.Z"
 git push origin main
 
@@ -91,6 +91,47 @@ Khi nhận được sự kiện đẩy Tag (`v*`), file cấu hình `.github/wor
 
 ---
 
+## 🔄 CÁCH LÀM MỚI MÃ XÁC THỰC OAUTH (`CLASPRC_JSON`) BẰNG LỆNH
+
+> [!WARNING]
+> **Hiện tượng:** Khi chạy deploy trên GitHub Actions bị báo đỏ ở Bước 7 (`npx clasp push --force`) với lỗi `invalid_grant: reauth related error (invalid_rapt)`.  
+> **Nguyên nhân:** Do chính sách bảo mật của Google Workspace tự động thu hồi phiên làm việc sau ~14 ngày.  
+> **Khắc phục:** Thực hiện 3 câu lệnh dưới đây để lấy lại token mới trong vòng 30 giây:
+
+### Bước 1: Mở Terminal tại thư mục dự án và đăng nhập lại
+```powershell
+npx clasp login --creds creds.json
+```
+*(Trình duyệt sẽ tự động bật lên $\rightarrow$ Chọn tài khoản Google $\rightarrow$ Bấm **Allow / Cho phép**).*
+
+### Bước 2: Tự động copy Token mới vào chuột (Clipboard)
+Chạy ngay câu lệnh PowerShell này:
+```powershell
+Get-Content ~\.clasprc.json -Raw | Set-Clipboard
+```
+*(Nội dung toàn bộ tệp token mới đã được nạp sẵn vào chuột của bạn mà không cần mở file ra tìm).*
+
+### Bước 3: Dán Token mới vào GitHub Secrets
+1. Truy cập: [github.com/TrongShuKi/mailmerge](https://github.com/TrongShuKi/mailmerge) $\rightarrow$ **Settings** $\rightarrow$ **Secrets and variables** $\rightarrow$ **Actions**.
+2. Tìm Secret mang tên **`CLASPRC_JSON`** $\rightarrow$ Bấm biểu tượng **Cây bút chì (Edit)**.
+3. Nhấn `Ctrl + V` để dán mã mới đè lên mã cũ $\rightarrow$ Bấm **Update secret**.
+4. Vào tab **Actions** $\rightarrow$ Bấm vào workflow lỗi $\rightarrow$ Chọn **Re-run all jobs** để kích hoạt lại deploy!
+
+---
+
+## 🔑 DANH SÁCH TOÀN BỘ GITHUB SECRETS CẦN THIẾT
+
+Để hệ thống CI/CD vận hành trơn tru và bảo mật tuyệt đối, Repository cần cấu hình đủ 4 Secrets sau:
+
+| Tên Secret | Ý nghĩa | Nơi lấy giá trị |
+| :--- | :--- | :--- |
+| `CLASPRC_JSON` | Mã phiên xác thực tài khoản Google Clasp | Chạy `Get-Content ~\.clasprc.json -Raw \| Set-Clipboard` sau khi login |
+| `SCRIPT_ID` | Mã ID của dự án Google Apps Script | Trong Apps Script: **Project Settings (Bánh răng)** $\rightarrow$ **Script ID** |
+| `DEPLOYMENT_ID_ADDON` | Mã Deployment của Google Sheets Add-on | Trong Apps Script: **Deploy** $\rightarrow$ **Manage deployments** $\rightarrow$ Mục Add-on |
+| `DEPLOYMENT_ID_TRACKING` | Mã Deployment của Web App Open Tracking | Trong Apps Script: **Deploy** $\rightarrow$ **Manage deployments** $\rightarrow$ Mục Web App |
+
+---
+
 ## 🚨 QUY TRÌNH KHÔI PHỤC KHẨN CẤP (ROLLBACK)
 
 Nếu bản mới vừa phát hành phát sinh lỗi ngoài ý muốn:
@@ -106,4 +147,3 @@ Nếu bản mới vừa phát hành phát sinh lỗi ngoài ý muốn:
 git revert HEAD
 git push origin main
 ```
-
