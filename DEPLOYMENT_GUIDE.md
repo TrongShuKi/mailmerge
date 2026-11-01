@@ -37,21 +37,15 @@ git describe --tags --abbrev=0
 
 ---
 
-### Bước 2: Đồng bộ số phiên bản trong mã nguồn (BẮT BUỘC)
-Trước khi commit và push, **phải cập nhật cùng một số phiên bản** ở 3 vị trí sau:
+### Bước 2: Cập nhật số phiên bản trong mã nguồn (DUY NHẤT 1 NƠI)
+Hệ thống đã được tối ưu hóa toàn cục, bạn **chỉ cần sửa đúng 1 dòng duy nhất**:
 
-1. **`src/MailMergePro.js`** (Dòng 5):
-   ```javascript
-   const APP_VERSION = "1.1.3";
-   ```
-2. **`src/Sidebar.html`** (Dòng hiển thị chân trang):
-   ```html
-   MailMerge v<span id="versionText" style="font-weight: bold; color: #1a73e8;">1.1.3</span>
-   ```
-3. **`package.json`** (Dòng 3):
-   ```json
-   "version": "1.1.3",
-   ```
+* **`src/MailMergePro.js`** (Dòng 5):
+  ```javascript
+  const APP_VERSION = "1.1.3";
+  ```
+
+*(Chân trang `Sidebar.html` đã được cấu hình tự động đọc động từ `APP_VERSION` khi mở bảng điều khiển, bạn KHÔNG CẦN sửa tay file HTML nữa!)*
 
 ---
 
@@ -112,3 +106,4 @@ Nếu bản mới vừa phát hành phát sinh lỗi ngoài ý muốn:
 git revert HEAD
 git push origin main
 ```
+
