@@ -377,6 +377,8 @@ function sendTestEmail(config) {
     if (!sampleRow) return "Lỗi: Không tìm thấy dòng dữ liệu mẫu hợp lệ nào trên Sheet.";
 
     let personalizedHtml = templateMessage.getBody();
+    const draftCc = templateMessage.getCc() || "";
+    const draftBcc = templateMessage.getBcc() || "";
     const inlineImages = {};
     const inlineAtts = templateMessage.getAttachments({ includeInlineImages: true, includeAttachments: false });
     const draftAttachments = templateMessage.getAttachments({ includeInlineImages: false, includeAttachments: true });
@@ -464,10 +466,33 @@ function sendTestEmail(config) {
     let emailOptions = { htmlBody: personalizedHtml };
     if (Object.keys(inlineImages).length > 0) emailOptions.inlineImages = inlineImages;
     if (config.senderName && config.senderName.trim() !== "") emailOptions.name = config.senderName;
+
+    let finalCc = draftCc;
+    if (config.colCc > 0) {
+      let sheetCc = sampleRow[config.colCc - 1];
+      if (sheetCc && sheetCc.toString().trim() !== "") {
+        let formattedSheetCc = sheetCc.toString().trim().replace(/[;\n]+/g, ',');
+        finalCc = finalCc ? (finalCc + "," + formattedSheetCc) : formattedSheetCc;
+      }
+    }
+    if (finalCc) emailOptions.cc = finalCc;
+
+    let finalBcc = draftBcc;
+    if (config.colBcc > 0) {
+      let sheetBcc = sampleRow[config.colBcc - 1];
+      if (sheetBcc && sheetBcc.toString().trim() !== "") {
+        let formattedSheetBcc = sheetBcc.toString().trim().replace(/[;\n]+/g, ',');
+        finalBcc = finalBcc ? (finalBcc + "," + formattedSheetBcc) : formattedSheetBcc;
+      }
+    }
+    if (finalBcc) emailOptions.bcc = finalBcc;
     if (attachmentsArray.length > 0) emailOptions.attachments = attachmentsArray;
 
     GmailApp.sendEmail(myEmail, "[TEST] " + config.draftSubject, "", emailOptions);
-    return `Đã gửi thư thử nghiệm thành công đến: ${myEmail}`;
+    let successMsg = `Đã gửi thư thử nghiệm thành công đến: ${myEmail}`;
+    if (finalCc) successMsg += ` (CC: ${finalCc})`;
+    if (finalBcc) successMsg += ` (BCC: ${finalBcc})`;
+    return successMsg;
   } catch (e) {
     return "Lỗi gửi thử: " + e.message;
   }

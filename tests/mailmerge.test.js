@@ -25,6 +25,15 @@ function parseRecipientList(cellValue) {
     .filter(email => email.length > 0 && isValidEmail(email));
 }
 
+function combineRecipients(draftList, sheetCell) {
+  let final = draftList || "";
+  if (sheetCell && sheetCell.toString().trim() !== "") {
+    let formatted = sheetCell.toString().trim().replace(/[;\n]+/g, ',');
+    final = final ? (final + "," + formatted) : formatted;
+  }
+  return final;
+}
+
 // B. Chuyển đổi số thứ tự cột sang chữ cái Sheets (A, B, ..., Z, AA, AB...)
 function indexToLetter(columnNumber) {
   if (!columnNumber || columnNumber <= 0) return '';
@@ -193,6 +202,19 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
         'email2@example.com',
         'email3@example.com'
       ]);
+    });
+
+    test('Hợp nhất danh sách CC/BCC từ bản nháp Gmail và dữ liệu dòng trên Sheet (Test Mail & Gửi thật)', () => {
+      const draftCc = "lead@example.com";
+      const sheetCc = "manager@example.com;\nsupervisor@example.com";
+      const combined = combineRecipients(draftCc, sheetCc);
+      expect(combined).toBe("lead@example.com,manager@example.com,supervisor@example.com");
+
+      // Trường hợp nháp không có CC, chỉ có trên Sheet
+      expect(combineRecipients("", "member@example.com")).toBe("member@example.com");
+
+      // Trường hợp Sheet không có CC, chỉ có trên nháp
+      expect(combineRecipients("lead@example.com", "")).toBe("lead@example.com");
     });
   });
 
