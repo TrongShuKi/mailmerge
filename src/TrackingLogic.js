@@ -5,20 +5,23 @@
 
 /**
  * HẰNG SỐ CẤU HÌNH TRACKING
- * - COOLDOWN_MS: Khoảng thời gian tối thiểu (15 giây) từ lúc gửi đến lúc nhận
- *   request mở email. Nếu request đến sớm hơn → Gmail Image Proxy pre-fetch,
+ * - COOLDOWN_MS: Khoảng thời gian tối thiểu (5 giây) từ lúc gửi đến lúc nhận
+ *   request mở email. Nếu request đến sớm hơn (0-2s) → Gmail Image Proxy pre-fetch,
  *   KHÔNG phải người dùng thật → bỏ qua để chống báo ảo (anti-false positive).
  * - STATUS_COL_DEFAULT: Tên cột trạng thái tracking mặc định trên Sheet.
+ * - WEB_APP_URL_FALLBACK: URL Web App cố định khi gọi từ ngữ cảnh Add-on Google Sheets
+ *   (nơi ScriptApp.getService().getUrl() trả về null).
  */
-const TRACKING_COOLDOWN_MS = 15 * 1000; // 15 giây
+const TRACKING_COOLDOWN_MS = 2 * 1000; // 2 giây (chống pre-fetch bot tức thời 0-1s) // 5 giây (đủ để chống pre-fetch bot nhưng không chặn người thử nghiệm)
 const TRACKING_STATUS_COL_DEFAULT = "Tracking";
+const TRACKING_WEB_APP_URL_FALLBACK = "https://script.google.com/macros/s/AKfycbziVBkjablulWN_BQoh8TA8DeROesuBQtEKU_fMdvj0TMxYPuhZysXPO84etxNP-CI0/exec";
 
 /**
  * Tạo thẻ HTML tracking pixel ẩn hoàn toàn.
  * Pixel này được chèn vào cuối body email, sử dụng kỹ thuật ẩn đa lớp
  * để tránh hiển thị ảnh vỡ (broken image) trên Gmail, Outlook, v.v.
  *
- * @param {string} webAppUrl     - URL Web App đã deploy (ScriptApp.getService().getUrl())
+ * @param {string} webAppUrl     - URL Web App đã deploy
  * @param {string} spreadsheetId - ID của Google Spreadsheet chứa danh sách gửi
  * @param {string} sheetName     - Tên tab Sheet
  * @param {number} rowIndex      - Số thứ tự hàng (1-indexed, bao gồm header = hàng 1)
@@ -53,8 +56,8 @@ function generateTrackingPixelHtml(webAppUrl, spreadsheetId, sheetName, rowIndex
  * Cập nhật trạng thái trên Sheet thành "Đã xem (HH:mm dd/MM)".
  *
  * Cơ chế chống báo ảo (Anti-False Positive):
- * - Gmail Image Proxy thường pre-fetch ảnh trong vòng 1-10 giây sau khi gửi.
- * - Nếu khoảng cách (now - ts) < 15 giây → bỏ qua, trả về pixel trống.
+ * - Gmail Image Proxy thường pre-fetch ảnh trong vòng 1-2 giây sau khi gửi.
+ * - Nếu khoảng cách (now - ts) < 5 giây → bỏ qua, trả về pixel trống.
  *
  * Cơ chế chống ghi đè (Anti-Overwrite):
  * - Nếu ô đã có trạng thái "Đã xem" → không ghi đè lần xem đầu tiên.
@@ -81,7 +84,7 @@ function doGet(e) {
     // Kiểm tra khoảng cách thời gian từ lúc gửi (ts) đến lúc nhận request
     var now = new Date().getTime();
     if (!isNaN(sendTimestamp) && (now - sendTimestamp) < TRACKING_COOLDOWN_MS) {
-      // Request đến quá sớm → Gmail Image Proxy pre-fetch → BỎ QUA
+      // Request đến quá sớm (dưới 5s) → Gmail Image Proxy pre-fetch → BỎ QUA
       return _serveTransparentPixel();
     }
 
@@ -90,7 +93,8 @@ function doGet(e) {
     var sheet = ss.getSheetByName(sheetName);
     if (!sheet) return _serveTransparentPixel();
 
-    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var lastCol = sheet.getLastColumn();
+    var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
     var trackingColIndex = -1;
     for (var i = 0; i < headers.length; i++) {
       if (headers[i].toString().trim() === statusColName) {
@@ -99,9 +103,17 @@ function doGet(e) {
       }
     }
 
-    // Nếu chưa có cột tracking → tạo cột mới ở cuối
+    // Nếu chưa có cột tracking → tìm cột trống gần nhất, nếu không có mới tạo ở cuối
     if (trackingColIndex === -1) {
-      trackingColIndex = headers.length;
+      for (var c = 0; c < headers.length; c++) {
+        if (!headers[c] || headers[c].toString().trim() === "") {
+          trackingColIndex = c;
+          break;
+        }
+      }
+      if (trackingColIndex === -1) {
+        trackingColIndex = headers.length;
+      }
       sheet.getRange(1, trackingColIndex + 1).setValue(statusColName);
     }
 
@@ -134,32 +146,35 @@ function doGet(e) {
  */
 function _serveTransparentPixel() {
   // GIF89a 1x1 pixel transparent (43 bytes)
-  var gifBytes = Utilities.base64Decode(
-    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-  );
+  var gifBase64 = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
   return ContentService
-    .createTextOutput()
-    .setMimeType(ContentService.MimeType.JSON)
-    .setContent(
-      Utilities.base64Encode(gifBytes)
-    );
+    .createTextOutput(gifBase64)
+    .setMimeType(ContentService.MimeType.TEXT);
 }
 
 /**
  * Lấy URL Web App hiện tại đã deploy.
  * Hàm tiện ích này được gọi từ MailMergePro.js để lấy URL tracking.
  * 
- * LƯU Ý: Web App phải được deploy với quyền:
- * - Execute as: "Me" (chủ sở hữu script)
- * - Who has access: "Anyone" (để email client có thể truy cập pixel)
+ * Thứ tự ưu tiên:
+ * 1. Thuộc tính Script Properties ("TRACKING_WEB_APP_URL") nếu quản trị viên cấu hình riêng.
+ * 2. ScriptApp.getService().getUrl() (khi chạy trong ngữ cảnh Web App).
+ * 3. TRACKING_WEB_APP_URL_FALLBACK: URL Web App đã xuất bản chính thức của dự án.
  *
- * @returns {string|null} URL Web App hoặc null nếu chưa deploy
+ * @returns {string} URL Web App hợp lệ
  */
 function getTrackingWebAppUrl() {
   try {
-    return ScriptApp.getService().getUrl();
+    var scriptPropUrl = PropertiesService.getScriptProperties().getProperty("TRACKING_WEB_APP_URL");
+    if (scriptPropUrl && scriptPropUrl.trim() !== "") {
+      return scriptPropUrl.trim();
+    }
+    var url = ScriptApp.getService().getUrl();
+    if (url && url.indexOf("/exec") !== -1) {
+      return url;
+    }
   } catch (err) {
-    Logger.log("TrackingLogic: Chưa deploy Web App. Lỗi: " + err.message);
-    return null;
+    Logger.log("TrackingLogic: getTrackingWebAppUrl error: " + err.message);
   }
+  return TRACKING_WEB_APP_URL_FALLBACK;
 }

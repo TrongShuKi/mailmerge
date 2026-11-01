@@ -192,11 +192,43 @@ function sendMergeEmailsFromDraft(config) {
     let sentCount = 0;
     let errorCount = 0;
     const headers = data[0];
-    let statusColIndex = headers.indexOf(config.statusName || "Status");
+    let statusName = config.statusName || "Status";
+    let statusColIndex = headers.indexOf(statusName);
 
     if (statusColIndex === -1) {
-      statusColIndex = headers.length;
-      sheet.getRange(1, statusColIndex + 1).setValue(config.statusName || "Status");
+      // Tìm cột gần nhất còn trống trên hàng tiêu đề
+      for (let c = 0; c < headers.length; c++) {
+        if (!headers[c] || headers[c].toString().trim() === "") {
+          statusColIndex = c;
+          break;
+        }
+      }
+      if (statusColIndex === -1) {
+        statusColIndex = headers.length;
+      }
+      sheet.getRange(1, statusColIndex + 1).setValue(statusName);
+      headers[statusColIndex] = statusName;
+    }
+
+    // === TẠO CỘT TRACKING NGAY KHI GỬI (NẾU BẬT THEO DÕI) ===
+    let trackingColIndex = -1;
+    let trackingColName = config.trackingStatusColName || "Tracking";
+    if (config.enableTracking) {
+      trackingColIndex = headers.indexOf(trackingColName);
+      if (trackingColIndex === -1) {
+        // Tìm cột gần nhất còn trống trên hàng tiêu đề để tránh ghi đè dữ liệu
+        for (let c = 0; c < headers.length; c++) {
+          if (!headers[c] || headers[c].toString().trim() === "") {
+            trackingColIndex = c;
+            break;
+          }
+        }
+        if (trackingColIndex === -1) {
+          trackingColIndex = headers.length;
+        }
+        sheet.getRange(1, trackingColIndex + 1).setValue(trackingColName);
+        headers[trackingColIndex] = trackingColName;
+      }
     }
 
     let delayMs = (parseFloat(config.delayTime) || 1) * 1000;
@@ -255,7 +287,6 @@ function sendMergeEmailsFromDraft(config) {
           var webAppUrl = getTrackingWebAppUrl();
           if (webAppUrl) {
             var ssId = ss.getId();
-            var trackingColName = config.trackingStatusColName || "Tracking";
             var pixelHtml = generateTrackingPixelHtml(webAppUrl, ssId, config.sheetName, i + 1, trackingColName);
             personalizedHtml += pixelHtml;
           }
@@ -324,6 +355,15 @@ function sendMergeEmailsFromDraft(config) {
 
         GmailApp.sendEmail(emailAddress, config.draftSubject, "", emailOptions);
         sheet.getRange(i + 1, statusColIndex + 1).setValue("Đã gửi");
+
+        // Khởi tạo trạng thái Tracking nếu bật theo dõi
+        if (config.enableTracking && trackingColIndex !== -1) {
+          let currentTrackVal = sheet.getRange(i + 1, trackingColIndex + 1).getValue();
+          if (!currentTrackVal || currentTrackVal.toString().trim() === "") {
+            sheet.getRange(i + 1, trackingColIndex + 1).setValue("Chưa xem");
+          }
+        }
+
         SpreadsheetApp.flush();
         sentCount++;
         Utilities.sleep(delayMs);

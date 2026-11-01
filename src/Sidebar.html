@@ -460,6 +460,10 @@
 
           document.getElementById('delayTime').value = autoData.delayTime || 1;
 
+          if (document.getElementById('enableTracking')) {
+            document.getElementById('enableTracking').checked = !!autoData.enableTracking;
+          }
+
           document.getElementById('loading').style.display = 'none';
           document.getElementById('main-form').style.display = 'block';
         })

@@ -458,6 +458,10 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
       // Request đến đúng 15 giây → HỢP LỆ (người dùng thật)
       expect(isTrackingRequestValid(sendTime, sendTime + 15000, COOLDOWN)).toBe(true);
 
+      // Kiểm tra với ngưỡng cooldown 2 giây (cấu hình mặc định mới)
+      expect(isTrackingRequestValid(sendTime, sendTime + 1000, 2000)).toBe(false);
+      expect(isTrackingRequestValid(sendTime, sendTime + 2000, 2000)).toBe(true);
+
       // Request đến sau 2 phút → HỢP LỆ (người dùng thật mở muộn)
       expect(isTrackingRequestValid(sendTime, sendTime + 120000, COOLDOWN)).toBe(true);
     });
@@ -479,7 +483,8 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
       expect(shouldUpdateTrackingStatus("Đã xem (14:30 19/10)")).toBe(false);
       expect(shouldUpdateTrackingStatus("Đã xem (09:00 20/10)")).toBe(false);
 
-      // Ô có nội dung khác (ví dụ: "Đã gửi") → cho phép ghi
+      // Ô có nội dung khác (ví dụ: "Đã gửi", "Chưa xem") → cho phép ghi
+      expect(shouldUpdateTrackingStatus("Chưa xem")).toBe(true);
       expect(shouldUpdateTrackingStatus("Đã gửi")).toBe(true);
       expect(shouldUpdateTrackingStatus("Lỗi gửi")).toBe(true);
     });
@@ -490,6 +495,25 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
         "ss_123", "Sheet1", 2, "", 1729330800000
       );
       expect(pixel).toContain("colName=Tracking");
+    });
+
+    test('Tìm cột gần nhất còn trống trên hàng tiêu đề (tránh ghi đè dữ liệu có sẵn)', () => {
+      function findNearestEmptyCol(headers) {
+        for (let c = 0; c < headers.length; c++) {
+          if (!headers[c] || headers[c].toString().trim() === "") {
+            return c;
+          }
+        }
+        return headers.length;
+      }
+
+      // Trường hợp có khoảng trống xen kẽ: Cột A: Tên, Cột B: Email, Cột C: trống, Cột D: Ghi chú
+      const headersWithGap = ["Tên", "Email", "", "Ghi chú"];
+      expect(findNearestEmptyCol(headersWithGap)).toBe(2); // Chọn đúng cột C (index 2)
+
+      // Trường hợp các cột đều có dữ liệu đầy đủ: chọn cột tiếp theo ở cuối
+      const headersFull = ["Tên", "Email", "Status"];
+      expect(findNearestEmptyCol(headersFull)).toBe(3); // Cột kế tiếp (index 3)
     });
   });
 
