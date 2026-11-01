@@ -44,8 +44,7 @@ Hệ thống đã được tối ưu hóa toàn cục, bạn **chỉ cần sửa
   ```javascript
   const APP_VERSION = "1.1.3";
   ```
-
-*(Chân trang `Sidebar.html` đã được cấu hình tự động đọc động từ `APP_VERSION` khi mở bảng điều khiển, bạn KHÔNG CẦN sửa tay file HTML nữa!)*
+  *(Chân trang `Sidebar.html` đã được cấu hình tự động đọc động từ `APP_VERSION` khi mở bảng điều khiển, bạn KHÔNG CẦN sửa tay file HTML nữa!)*
 
 ---
 
@@ -84,9 +83,10 @@ Khi nhận được sự kiện đẩy Tag (`v*`), file cấu hình `.github/wor
 
 1. **Chạy kiểm thử Jest 100%**.
 2. **Khởi tạo thông tin xác thực Google Clasp từ Secrets**.
-3. **Tự động cập nhật đè (In-place Update)** vào 2 Deployment Active hiện có bằng tham số `-i`:
-   * **Deployment Add-on:** `AKfycbyKfCVe_XvnrWl8i2Rw4TFAs-40XlJfGA3vtYKKYvJcHOPlVmRjsOfshrKpaIIwmYGH`
-   * **Deployment Tracking Web App:** `AKfycbziVBkjablulWN_BQoh8TA8DeROesuBQtEKU_fMdvj0TMxYPuhZysXPO84etxNP-CI0`
+3. **Tự động cập nhật đè (In-place Update)** vào 2 Deployment Active từ GitHub Secrets:
+   * **Secret `DEPLOYMENT_ID_ADDON`:** Deployment ID của Add-on Google Sheets (lấy trong Manage deployments).
+   * **Secret `DEPLOYMENT_ID_TRACKING`:** Deployment ID của Open Tracking Web App (lấy trong Manage deployments).
+   *(Bảo mật 100%, không bị lộ ID công khai trên kho lưu trữ mã nguồn).*
 4. Người dùng mở Google Sheets lên sẽ nhận phiên bản mới ngay lập tức mà **không cần vào Apps Script bấm chuột thủ công**.
 
 ---
