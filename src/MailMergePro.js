@@ -119,7 +119,7 @@ function getAutoConfig() {
     colAttachment: colAttachment,
     colOther1: "", colOther2: "", colOther3: "", colOther4: "",
     colOther5: "", colOther6: "", colOther7: "", colOther8: "",
-    delayTime: 1,
+    delayTime: 0.5,
     enableTracking: false,              // Mặc định TẮT theo dõi mở email
     trackingStatusColName: "Tracking"   // Tên cột tracking trên Sheet
   };
