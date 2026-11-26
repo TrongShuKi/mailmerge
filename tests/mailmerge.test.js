@@ -517,4 +517,468 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
     });
   });
 
+  // --- SUITE 9: KIỂM TRA CHUYÊN SÂU CƠ CHẾ 1 TRIGGER NỐI TIẾP (SCHEDULE ENGINE) ---
+  describe('9. Kiểm tra Cơ chế 1 Trigger Nối Tiếp trên ScheduleLogic.js (Full Integration Mock)', () => {
+    const ScheduleLogic = require('../src/ScheduleLogic.js');
+
+    // Khởi tạo môi trường giả lập Google Apps Script áp đặt ĐÚNG giới hạn Add-on của Google
+    function createGasTestEnv(initialNowIso) {
+      let currentTimeMs = new Date(initialNowIso).getTime();
+      const RealDate = Date;
+
+      class MockDate extends RealDate {
+        constructor(...args) {
+          if (args.length === 0) {
+            super(currentTimeMs);
+          } else {
+            super(...args);
+          }
+        }
+        static now() {
+          return currentTimeMs;
+        }
+      }
+      global.Date = MockDate;
+
+      const userPropsStore = {};
+      const userCacheStore = {};
+      const sentCalls = [];
+      let activeTriggers = [];
+      let triggerCounter = 1;
+      let forceCreateTriggerError = null;
+      let sendDurationAdvanceMs = 0;
+
+      // Dữ liệu giả lập 2 file Spreadsheet khác nhau với nhiều Tab
+      const spreadsheets = {
+        ss_1: {
+          id: 'ss_1',
+          sheets: {
+            'mentee sau ct': [
+              ['Họ tên', 'Email', 'Ghi chú'],
+              ['Nguyễn An', 'an@example.com', ''],
+              ['Trần Bình', 'binh@example.com', '']
+            ],
+            'mentor sau ct': [
+              ['Họ tên', 'Email', 'Status'],
+              ['Lê Cúc', 'cuc@example.com', ''],
+              ['Phạm Dũng', 'dung@example.com', 'Đã gửi'] // Đã gửi trước → không tính
+            ],
+            'followup': [
+              ['Họ tên', 'Email'],
+              ['Hoàng Em', 'em@example.com']
+            ]
+          }
+        },
+        ss_2: {
+          id: 'ss_2',
+          sheets: {
+            'vip': [
+              ['Họ tên', 'Email'],
+              ['Võ Giang', 'giang@example.com']
+            ]
+          }
+        }
+      };
+      let activeSpreadsheetId = 'ss_1';
+
+      function makeSheetWrapper(ssId, sheetName) {
+        const rows = spreadsheets[ssId].sheets[sheetName];
+        if (!rows) return null;
+        return {
+          getName: () => sheetName,
+          getDataRange: () => ({
+            getValues: () => rows.map(r => r.slice())
+          }),
+          isRowHiddenByFilter: () => false,
+          isRowHiddenByUser: () => false,
+          getRange: (row, col, numRows = 1, numCols = 1) => ({
+            setValue: (val) => {
+              while (rows.length < row) rows.push([]);
+              while (rows[row - 1].length < col) rows[row - 1].push('');
+              rows[row - 1][col - 1] = val;
+            },
+            getValues: () => {
+              const out = [];
+              for (let r = 0; r < numRows; r++) {
+                const rowArr = [];
+                const targetRow = rows[row - 1 + r] || [];
+                for (let c = 0; c < numCols; c++) {
+                  rowArr.push(targetRow[col - 1 + c] !== undefined ? targetRow[col - 1 + c] : '');
+                }
+                out.push(rowArr);
+              }
+              return out;
+            },
+            setValues: (vals) => {
+              for (let r = 0; r < vals.length; r++) {
+                while (rows.length < row + r) rows.push([]);
+                for (let c = 0; c < vals[r].length; c++) {
+                  while (rows[row - 1 + r].length < col + c) rows[row - 1 + r].push('');
+                  rows[row - 1 + r][col - 1 + c] = vals[r][c];
+                }
+              }
+            }
+          })
+        };
+      }
+
+      function makeSpreadsheetWrapper(ssId) {
+        return {
+          getId: () => ssId,
+          getSheetByName: (name) => makeSheetWrapper(ssId, name)
+        };
+      }
+
+      global.PropertiesService = {
+        getUserProperties: () => ({
+          getProperty: (k) => (k in userPropsStore ? userPropsStore[k] : null),
+          setProperty: (k, v) => { userPropsStore[k] = String(v); },
+          deleteProperty: (k) => { delete userPropsStore[k]; }
+        })
+      };
+
+      global.CacheService = {
+        getUserCache: () => ({
+          get: (k) => (k in userCacheStore ? userCacheStore[k] : null),
+          put: (k, v) => { userCacheStore[k] = String(v); }
+        })
+      };
+
+      global.LockService = {
+        getUserLock: () => ({
+          tryLock: () => true,
+          releaseLock: () => {}
+        })
+      };
+
+      global.SpreadsheetApp = {
+        getActiveSpreadsheet: () => (activeSpreadsheetId ? makeSpreadsheetWrapper(activeSpreadsheetId) : null),
+        openById: (id) => makeSpreadsheetWrapper(id)
+      };
+
+      global.ScriptApp = {
+        getProjectTriggers: () => activeTriggers.slice(),
+        deleteTrigger: (trig) => {
+          activeTriggers = activeTriggers.filter(t => t.id !== trig.id);
+        },
+        newTrigger: (fnName) => ({
+          timeBased: () => ({
+            at: (dateObj) => ({
+              create: () => {
+                if (forceCreateTriggerError) {
+                  throw forceCreateTriggerError;
+                }
+                // Mô phỏng ĐÚNG giới hạn cứng của Google Add-on: TỐI ĐA 1 time-based trigger trên mỗi document!
+                const sameDocTriggers = activeTriggers.filter(t => t.docId === activeSpreadsheetId);
+                if (sameDocTriggers.length >= 1) {
+                  throw new Error('This add-on has created too many time-based triggers in this document for this Google user account.');
+                }
+                if (!(dateObj instanceof RealDate) || isNaN(dateObj.getTime()) || dateObj.getTime() <= currentTimeMs) {
+                  throw new Error('The scheduled date must be in the future.');
+                }
+                const created = {
+                  id: 'trig_' + (triggerCounter++),
+                  docId: activeSpreadsheetId || 'bg_doc',
+                  fnName,
+                  atMs: dateObj.getTime(),
+                  getHandlerFunction: () => fnName,
+                  getUniqueId: function () { return this.id; }
+                };
+                activeTriggers.push(created);
+                return created;
+              }
+            })
+          })
+        })
+      };
+
+      global.sendMergeEmailsFromDraft = (config) => {
+        sentCalls.push({
+          runAtMs: currentTimeMs,
+          spreadsheetId: config.spreadsheetId,
+          sheetName: config.sheetName,
+          draftSubject: config.draftSubject,
+          enableTracking: config.enableTracking
+        });
+        // Đánh dấu Đã gửi giống MailMergePro.js thật
+        const rows = spreadsheets[config.spreadsheetId].sheets[config.sheetName];
+        const statusName = config.statusName || 'Status';
+        let statusIdx = rows[0].indexOf(statusName);
+        if (statusIdx === -1) {
+          statusIdx = rows[0].length;
+          rows[0].push(statusName);
+        }
+        for (let r = 1; r < rows.length; r++) {
+          while (rows[r].length <= statusIdx) rows[r].push('');
+          rows[r][statusIdx] = 'Đã gửi';
+        }
+        if (sendDurationAdvanceMs > 0) {
+          currentTimeMs += sendDurationAdvanceMs;
+        }
+      };
+
+      return {
+        setNow: (iso) => { currentTimeMs = new Date(iso).getTime(); },
+        getNowMs: () => currentTimeMs,
+        setActiveSpreadsheet: (id) => { activeSpreadsheetId = id; },
+        setActiveConfig: (cfg) => { userCacheStore['CURRENT_CAMPAIGN_CONFIG'] = JSON.stringify(cfg); },
+        getActiveTriggers: () => activeTriggers,
+        getSentCalls: () => sentCalls,
+        getSheetRows: (ssId, name) => spreadsheets[ssId].sheets[name],
+        getStoredCampaigns: () => JSON.parse(userPropsStore['SCHEDULED_CAMPAIGNS'] || '{}'),
+        setForceTriggerError: (err) => { forceCreateTriggerError = err; },
+        setSendDurationAdvanceMs: (ms) => { sendDurationAdvanceMs = ms; },
+        cleanup: () => {
+          global.Date = RealDate;
+          delete global.PropertiesService;
+          delete global.CacheService;
+          delete global.LockService;
+          delete global.SpreadsheetApp;
+          delete global.ScriptApp;
+          delete global.sendMergeEmailsFromDraft;
+        }
+      };
+    }
+
+    let env;
+    afterEach(() => {
+      if (env) {
+        env.cleanup();
+        env = null;
+      }
+    });
+
+    test('Lên lịch nhiều chiến dịch ngược thứ tự giờ (08:00 trước, 07:30 sau, 09:00 tiếp) KHÔNG vượt quá 1 Trigger', () => {
+      env = createGasTestEnv('2026-11-26T23:00:00+07:00');
+
+      // 1. Đặt Mentor lúc 08:00 sáng mai
+      env.setActiveConfig({
+        draftSubject: '[CM2026] Mentor Invite',
+        sheetName: 'mentor sau ct',
+        colEmail: 2,
+        enableTracking: true,
+        trackingStatusColName: 'Tracking'
+      });
+      const res1 = ScheduleLogic.createNewScheduledCampaign('2026-11-27T08:00:00+07:00');
+      expect(res1).toContain('thành công cho 1 email');
+      expect(env.getActiveTriggers()).toHaveLength(1);
+      expect(env.getActiveTriggers()[0].atMs).toBe(new Date('2026-11-27T08:00:00+07:00').getTime());
+
+      // 2. Đặt Mentee lúc 07:30 sáng mai (SỚM HƠN 08:00) → tự động dời trigger duy nhất về 07:30
+      env.setActiveConfig({
+        draftSubject: '[CM2026] Mentee Invite',
+        sheetName: 'mentee sau ct',
+        colEmail: 2,
+        enableTracking: false
+      });
+      const res2 = ScheduleLogic.createNewScheduledCampaign('2026-11-27T07:30:00+07:00');
+      expect(res2).toContain('thành công cho 2 email');
+      expect(env.getActiveTriggers()).toHaveLength(1);
+      expect(env.getActiveTriggers()[0].atMs).toBe(new Date('2026-11-27T07:30:00+07:00').getTime());
+
+      // 3. Đặt thêm Follow-up lúc 09:00 → giữ trigger ở mốc sớm nhất 07:30
+      env.setActiveConfig({
+        draftSubject: '[CM2026] Follow up',
+        sheetName: 'followup',
+        colEmail: 2
+      });
+      const res3 = ScheduleLogic.createNewScheduledCampaign('2026-11-27T09:00:00+07:00');
+      expect(res3).toContain('thành công cho 1 email');
+      expect(env.getActiveTriggers()).toHaveLength(1);
+      expect(env.getActiveTriggers()[0].atMs).toBe(new Date('2026-11-27T07:30:00+07:00').getTime());
+
+      // 4. Kiểm tra danh sách UI trả về đúng thứ tự thời gian & đánh dấu Sheet
+      const data = ScheduleLogic.getScheduleManagerData();
+      expect(data.activeCampaigns.map(c => c.sheetName)).toEqual(['mentee sau ct', 'mentor sau ct', 'followup']);
+      expect(data.activeCampaigns[1].config.enableTracking).toBe(true);
+      expect(env.getSheetRows('ss_1', 'mentee sau ct')[1][3]).toBe('🕒 Đã lên lịch');
+      expect(env.getSheetRows('ss_1', 'mentor sau ct')[1][2]).toBe('🕒 Đã lên lịch');
+      expect(env.getSheetRows('ss_1', 'mentor sau ct')[2][2]).toBe('Đã gửi'); // Không ghi đè mail đã gửi
+    });
+
+    test('Chạy chuỗi nối tiếp (07:30 → tự tạo Trigger 08:00 → tự tạo Trigger 09:00 → tự xóa sạch)', () => {
+      env = createGasTestEnv('2026-11-26T23:00:00+07:00');
+
+      env.setActiveConfig({ draftSubject: 'Draft Mentor', sheetName: 'mentor sau ct', colEmail: 2, enableTracking: true });
+      ScheduleLogic.createNewScheduledCampaign('2026-11-27T08:00:00+07:00');
+
+      env.setActiveConfig({ draftSubject: 'Draft Mentee', sheetName: 'mentee sau ct', colEmail: 2 });
+      ScheduleLogic.createNewScheduledCampaign('2026-11-27T07:30:00+07:00');
+
+      env.setActiveConfig({ draftSubject: 'Draft Follow', sheetName: 'followup', colEmail: 2 });
+      ScheduleLogic.createNewScheduledCampaign('2026-11-27T09:00:00+07:00');
+
+      // Mô phỏng chạy ngầm trên server (không có ActiveSpreadsheet UI)
+      env.setActiveSpreadsheet(null);
+
+      // Lượt 1: Đúng 07:30 Trigger nổ
+      env.setNow('2026-11-27T07:30:05+07:00');
+      ScheduleLogic.processScheduledCampaigns();
+      expect(env.getSentCalls().map(c => c.sheetName)).toEqual(['mentee sau ct']);
+      expect(env.getActiveTriggers()).toHaveLength(1);
+      expect(env.getActiveTriggers()[0].atMs).toBe(new Date('2026-11-27T08:00:00+07:00').getTime());
+
+      // Lượt 2: Đúng 08:00 Trigger nối tiếp nổ
+      env.setNow('2026-11-27T08:00:10+07:00');
+      ScheduleLogic.processScheduledCampaigns();
+      expect(env.getSentCalls().map(c => c.sheetName)).toEqual(['mentee sau ct', 'mentor sau ct']);
+      expect(env.getSentCalls()[1].enableTracking).toBe(true);
+      expect(env.getActiveTriggers()).toHaveLength(1);
+      expect(env.getActiveTriggers()[0].atMs).toBe(new Date('2026-11-27T09:00:00+07:00').getTime());
+
+      // Lượt 3: Đúng 09:00 Trigger cuối nổ → hàng đợi trống → dọn sạch 0 Trigger
+      env.setNow('2026-11-27T09:00:02+07:00');
+      ScheduleLogic.processScheduledCampaigns();
+      expect(env.getSentCalls().map(c => c.sheetName)).toEqual(['mentee sau ct', 'mentor sau ct', 'followup']);
+      expect(env.getActiveTriggers()).toHaveLength(0);
+      expect(Object.keys(env.getStoredCampaigns())).toHaveLength(0);
+    });
+
+    test('Hủy chiến dịch sớm nhất (07:30) phải tự động chuyển Trigger duy nhất sang chiến dịch kế tiếp (08:00)', () => {
+      env = createGasTestEnv('2026-11-26T23:00:00+07:00');
+
+      env.setActiveConfig({ draftSubject: 'Draft Mentor', sheetName: 'mentor sau ct', colEmail: 2 });
+      ScheduleLogic.createNewScheduledCampaign('2026-11-27T08:00:00+07:00');
+
+      env.setActiveConfig({ draftSubject: 'Draft Mentee', sheetName: 'mentee sau ct', colEmail: 2 });
+      ScheduleLogic.createNewScheduledCampaign('2026-11-27T07:30:00+07:00');
+
+      const listBefore = ScheduleLogic.getScheduleManagerData().activeCampaigns;
+      const menteeId = listBefore.find(c => c.sheetName === 'mentee sau ct').id;
+      const mentorId = listBefore.find(c => c.sheetName === 'mentor sau ct').id;
+
+      // Hủy chiến dịch 07:30
+      const cancelRes1 = ScheduleLogic.cancelSingleCampaign(menteeId);
+      expect(cancelRes1).toContain('thành công');
+      expect(env.getSheetRows('ss_1', 'mentee sau ct')[1][3]).toBe(''); // Đã xóa nhãn "🕒 Đã lên lịch"
+      expect(env.getSheetRows('ss_1', 'mentor sau ct')[1][2]).toBe('🕒 Đã lên lịch'); // Mentor vẫn giữ nguyên
+      expect(env.getActiveTriggers()).toHaveLength(1);
+      expect(env.getActiveTriggers()[0].atMs).toBe(new Date('2026-11-27T08:00:00+07:00').getTime());
+
+      // Hủy nốt chiến dịch 08:00 → 0 Trigger
+      ScheduleLogic.cancelSingleCampaign(mentorId);
+      expect(env.getActiveTriggers()).toHaveLength(0);
+      expect(env.getSheetRows('ss_1', 'mentor sau ct')[1][2]).toBe('');
+    });
+
+    test('Rollback nguyên tử khi tạo Trigger lỗi: KHÔNG sinh chiến dịch ma, KHÔNG gắn nhãn nhầm, giữ nguyên Trigger cũ', () => {
+      env = createGasTestEnv('2026-11-26T23:00:00+07:00');
+
+      env.setActiveConfig({ draftSubject: 'Draft Mentor', sheetName: 'mentor sau ct', colEmail: 2 });
+      ScheduleLogic.createNewScheduledCampaign('2026-11-27T08:00:00+07:00');
+
+      // Giả lập lỗi Google từ chối tạo trigger khi đặt lịch thứ 2
+      env.setForceTriggerError(new Error('Simulated Google Trigger Limit Error'));
+      env.setActiveConfig({ draftSubject: 'Draft Mentee', sheetName: 'mentee sau ct', colEmail: 2 });
+
+      const failRes = ScheduleLogic.createNewScheduledCampaign('2026-11-27T07:30:00+07:00');
+      expect(failRes).toBe('Lỗi lên lịch: Simulated Google Trigger Limit Error');
+
+      // Hàng đợi chỉ còn đúng chiến dịch Mentor (tuyệt đối không lọt Mentee "ma")
+      const campaigns = env.getStoredCampaigns();
+      expect(Object.keys(campaigns)).toHaveLength(1);
+      expect(Object.values(campaigns)[0].sheetName).toBe('mentor sau ct');
+
+      // Sheet Mentee chưa bị tạo cột Status/gắn nhãn "🕒 Đã lên lịch"
+      expect(env.getSheetRows('ss_1', 'mentee sau ct')[0]).toEqual(['Họ tên', 'Email', 'Ghi chú']);
+
+      // Nhả lỗi giả lập và kiểm tra nếu rollback khôi phục trigger cũ hoạt động đúng
+      env.setForceTriggerError(null);
+      env.setActiveConfig({ draftSubject: 'Draft Mentee', sheetName: 'mentee sau ct', colEmail: 2 });
+      // Thử trường hợp lỗi chỉ xảy ra ở lần gọi .create() thứ nhất (chiến dịch mới), lần khôi phục thành công
+      let callCount = 0;
+      const origNewTrigger = global.ScriptApp.newTrigger;
+      global.ScriptApp.newTrigger = (fn) => ({
+        timeBased: () => ({
+          at: (d) => ({
+            create: () => {
+              callCount++;
+              if (callCount === 1) throw new Error('Transient trigger error');
+              return origNewTrigger(fn).timeBased().at(d).create();
+            }
+          })
+        })
+      });
+      const failOnceRes = ScheduleLogic.createNewScheduledCampaign('2026-11-27T07:30:00+07:00');
+      expect(failOnceRes).toContain('Transient trigger error');
+      expect(env.getActiveTriggers()).toHaveLength(1);
+      expect(env.getActiveTriggers()[0].atMs).toBe(new Date('2026-11-27T08:00:00+07:00').getTime());
+    });
+
+    test('Chống tạo trùng lặp chiến dịch y hệt nhau (cùng file + tab + draft + cùng phút)', () => {
+      env = createGasTestEnv('2026-11-26T23:00:00+07:00');
+      env.setActiveConfig({ draftSubject: 'Draft Mentee', sheetName: 'mentee sau ct', colEmail: 2 });
+
+      expect(ScheduleLogic.createNewScheduledCampaign('2026-11-27T07:30:00+07:00')).toContain('thành công');
+      const dupRes = ScheduleLogic.createNewScheduledCampaign('2026-11-27T07:30:00+07:00');
+      expect(dupRes).toContain('đã có trong hàng đợi');
+      expect(Object.keys(env.getStoredCampaigns())).toHaveLength(1);
+    });
+
+    test('Dời lịch an toàn sang +65 giây nếu chiến dịch trước chạy quá 3.5 phút làm chiến dịch sau trễ giờ', () => {
+      env = createGasTestEnv('2026-11-27T07:20:00+07:00');
+
+      env.setActiveConfig({ draftSubject: 'Heavy Batch', sheetName: 'mentee sau ct', colEmail: 2 });
+      ScheduleLogic.createNewScheduledCampaign('2026-11-27T07:30:00+07:00');
+
+      env.setActiveConfig({ draftSubject: 'Next Batch', sheetName: 'mentor sau ct', colEmail: 2 });
+      ScheduleLogic.createNewScheduledCampaign('2026-11-27T07:33:00+07:00');
+
+      // Giả lập chiến dịch 1 tốn 4 phút (240s > 210s) để gửi
+      env.setSendDurationAdvanceMs(240 * 1000);
+      env.setActiveSpreadsheet(null);
+      env.setNow('2026-11-27T07:30:00+07:00');
+
+      ScheduleLogic.processScheduledCampaigns();
+
+      // Chiến dịch 1 đã gửi, đồng hồ hiện là 07:34:00 (đã quá 07:33:00 nhưng KHÔNG được xóa mất Next Batch!)
+      expect(env.getSentCalls().map(c => c.draftSubject)).toEqual(['Heavy Batch']);
+      const remaining = Object.values(env.getStoredCampaigns());
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].draftSubject).toBe('Next Batch');
+
+      // Trigger kế tiếp phải được đặt ở tương lai (+65s = 07:35:05) để không bị lỗi past date
+      expect(env.getActiveTriggers()).toHaveLength(1);
+      expect(env.getActiveTriggers()[0].atMs).toBe(new Date('2026-11-27T07:35:05+07:00').getTime());
+
+      // Lượt tiếp theo chạy đúng 07:35:05 → Next Batch được gửi trọn vẹn!
+      env.setSendDurationAdvanceMs(0);
+      env.setNow('2026-11-27T07:35:05+07:00');
+      ScheduleLogic.processScheduledCampaigns();
+      expect(env.getSentCalls().map(c => c.draftSubject)).toEqual(['Heavy Batch', 'Next Batch']);
+      expect(env.getActiveTriggers()).toHaveLength(0);
+    });
+
+    test('Hỗ trợ lên lịch trên nhiều file Spreadsheet khác nhau và hủy độc lập từng file', () => {
+      env = createGasTestEnv('2026-11-26T23:00:00+07:00');
+
+      // Đặt trên File 1 lúc 08:00
+      env.setActiveSpreadsheet('ss_1');
+      env.setActiveConfig({ draftSubject: 'S1 Mail', sheetName: 'mentor sau ct', colEmail: 2 });
+      expect(ScheduleLogic.createNewScheduledCampaign('2026-11-27T08:00:00+07:00')).toContain('thành công');
+
+      // Chuyển sang File 2 đặt lúc 07:45
+      env.setActiveSpreadsheet('ss_2');
+      env.setActiveConfig({ draftSubject: 'S2 Mail', sheetName: 'vip', colEmail: 2 });
+      expect(ScheduleLogic.createNewScheduledCampaign('2026-11-27T07:45:00+07:00')).toContain('thành công');
+
+      expect(env.getActiveTriggers()).toHaveLength(1);
+      expect(env.getActiveTriggers()[0].atMs).toBe(new Date('2026-11-27T07:45:00+07:00').getTime());
+
+      // Chạy lúc 07:45 → gửi File 2, nối Trigger sang 08:00 của File 1
+      env.setActiveSpreadsheet(null);
+      env.setNow('2026-11-27T07:45:00+07:00');
+      ScheduleLogic.processScheduledCampaigns();
+      expect(env.getSentCalls()[0].spreadsheetId).toBe('ss_2');
+      expect(env.getActiveTriggers()).toHaveLength(1);
+      expect(env.getActiveTriggers()[0].atMs).toBe(new Date('2026-11-27T08:00:00+07:00').getTime());
+
+      // Chạy lúc 08:00 → gửi File 1, dọn sạch Trigger
+      env.setNow('2026-11-27T08:00:00+07:00');
+      ScheduleLogic.processScheduledCampaigns();
+      expect(env.getSentCalls()[1].spreadsheetId).toBe('ss_1');
+      expect(env.getActiveTriggers()).toHaveLength(0);
+    });
+  });
+
 });

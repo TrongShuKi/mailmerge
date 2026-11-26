@@ -78,6 +78,16 @@
         loadData();
       };
 
+      function escapeHtml(text) {
+        if (text === null || text === undefined) return "";
+        return String(text)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
       function loadData() {
         google.script.run
           .withSuccessHandler(function(res) {
@@ -88,7 +98,7 @@
               document.getElementById('cur-email').innerText = "Cột " + res.currentConfig.colEmail;
               document.getElementById('cur-count').innerText = (res.currentConfig.recipientCount || 0) + " email";
             }
-            renderTable(res.activeCampaigns);
+            renderTable(res.activeCampaigns || []);
           })
           .getScheduleManagerData();
       }
@@ -103,17 +113,22 @@
           return;
         }
 
-        campaigns.forEach(camp => {
+        const sorted = campaigns.slice().sort(function(a, b) {
+          return new Date(a.scheduleTimeStr).getTime() - new Date(b.scheduleTimeStr).getTime();
+        });
+
+        sorted.forEach(camp => {
           const dateFormatted = new Date(camp.scheduleTimeStr).toLocaleString('vi-VN');
           const countDisplay = camp.recipientCount !== undefined ? camp.recipientCount : "-";
+          const safeId = escapeHtml(camp.id);
           const row = document.createElement('tr');
           row.innerHTML = `
-            <td><b>${camp.draftSubject}</b></td>
-            <td>${camp.sheetName}</td>
+            <td><b>${escapeHtml(camp.draftSubject)}</b></td>
+            <td>${escapeHtml(camp.sheetName)}</td>
             <td style="text-align: center;"><span class="badge-count">${countDisplay} mail</span></td>
-            <td style="color: #673ab7; font-weight: bold;">${dateFormatted}</td>
+            <td style="color: #673ab7; font-weight: bold;">${escapeHtml(dateFormatted)}</td>
             <td style="text-align: center;">
-              <button class="btn btn-danger" onclick="cancelCampaign('${camp.id}')">Hủy</button>
+              <button class="btn btn-danger cancel-btn" onclick="cancelCampaign('${safeId}')">Hủy</button>
             </td>
           `;
           tbody.appendChild(row);
@@ -130,7 +145,7 @@
         const btn = document.getElementById('btnSchedule');
         btn.disabled = true;
         btn.innerText = "ĐANG XỬ LÝ...";
-        showMsg("Đang lưu lịch hẹn và khởi tạo Trigger...", "#1a73e8");
+        showMsg("Đang lưu lịch hẹn và đồng bộ Trigger...", "#1a73e8");
 
         google.script.run
           .withSuccessHandler(function(res) {
@@ -152,16 +167,23 @@
           .createNewScheduledCampaign(timeVal);
       }
 
+      function setCancelButtonsDisabled(disabled) {
+        const buttons = document.querySelectorAll('.cancel-btn');
+        buttons.forEach(function(b) { b.disabled = disabled; });
+      }
+
       function cancelCampaign(campaignId) {
         if (!confirm("Bạn có chắc chắn muốn hủy chiến dịch hẹn giờ này không?")) return;
 
+        setCancelButtonsDisabled(true);
         showMsg("Đang hủy chiến dịch...", "#1a73e8");
         google.script.run
           .withSuccessHandler(function(res) {
-            showMsg(res, "#0F9D58");
+            showMsg(res, res.includes("thành công") ? "#0F9D58" : "#d93025");
             loadData();
           })
           .withFailureHandler(function(err) {
+            setCancelButtonsDisabled(false);
             showMsg("Lỗi: " + err.message, "#d93025");
           })
           .cancelSingleCampaign(campaignId);
