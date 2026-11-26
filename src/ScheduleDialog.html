@@ -36,7 +36,6 @@
       .empty-notice { text-align: center; color: #888; font-style: italic; padding: 20px 0; }
 
       .warn-box { margin-top: 10px; padding: 9px 12px; border-radius: 4px; font-size: 12px; line-height: 1.45; }
-      .warn-amber { background: #fef7e0; border-left: 4px solid #f9ab00; color: #7a4f01; }
       .warn-red { background: #fce8e6; border-left: 4px solid #d93025; color: #a50e0e; }
       .info-box { background: #e8f0fe; border-left: 4px solid #1a73e8; color: #174ea6; padding: 12px 14px; border-radius: 4px; font-size: 13px; line-height: 1.5; }
     </style>
@@ -66,10 +65,6 @@
         <div class="meta-item" style="grid-column: span 2;">
           <b>Số email dự kiến gửi:</b> <span id="cur-count" class="badge-count">0 email</span>
         </div>
-      </div>
-
-      <div id="same-doc-active-warning" class="warn-box warn-amber" style="display: none; margin-bottom: 10px;">
-        ⚠️ <b>File Sheet hiện tại đang có <span id="same-doc-count">1</span> lịch hẹn chờ.</b> Theo giới hạn của Google Add-on (tối đa 1 Trigger/file và tần suất &ge; 1 giờ/lần), hệ thống <b>không cho phép tạo thêm lịch cách nhau dưới 65 phút</b> trên cùng 1 file này. Muốn gửi sát giờ hơn, hãy <b>tạo bản sao sang file Sheet khác</b>.
       </div>
 
       <div class="action-row">
@@ -137,14 +132,6 @@
               document.getElementById('cur-email').innerText = "Cột " + res.currentConfig.colEmail;
               document.getElementById('cur-count').innerText = (res.currentConfig.recipientCount || 0) + " email";
 
-              const sameDocCount = res.currentDocCampaignCount || 0;
-              const activeWarnEl = document.getElementById('same-doc-active-warning');
-              if (sameDocCount > 0) {
-                document.getElementById('same-doc-count').innerText = sameDocCount;
-                activeWarnEl.style.display = 'block';
-              } else {
-                activeWarnEl.style.display = 'none';
-              }
               checkSameFileGapWarning();
             } else {
               document.getElementById('create-card').style.display = 'none';
