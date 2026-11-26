@@ -13,6 +13,7 @@
 
     .form-group {
       margin-bottom: 12px;
+      transition: opacity 0.2s ease;
     }
 
     label {
@@ -21,6 +22,7 @@
       margin-bottom: 5px;
       font-size: 13px;
       color: #333;
+      transition: color 0.2s ease;
     }
 
     input[type="text"],
@@ -33,32 +35,86 @@
       box-sizing: border-box;
       background-color: white;
       font-size: 13px;
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
     }
 
     select.col-select,
+    select.tab-select,
     select#draftSubject {
       font-weight: bold;
-      color: #1a73e8;
+      color: #137333;
       cursor: pointer;
       appearance: none;
       -webkit-appearance: none;
       -moz-appearance: none;
-      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="%231a73e8"><path d="M7 10l5 5 5-5z"/></svg>');
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="%23137333"><path d="M7 10l5 5 5-5z"/></svg>');
       background-repeat: no-repeat;
       background-position: right 10px center;
     }
 
-    select#draftSubject {
-      color: #202124;
+    /* === NHẬN DIỆN NHANH TRƯỜNG ĐANG DÙNG (XANH) VS KHÔNG DÙNG (XÁM MỜ) === */
+    .form-group.field-active > label {
+      color: #137333;
+    }
+
+    .form-group.field-active input[type="text"],
+    .form-group.field-active select {
+      background-color: #e6f4ea;
+      border: 1.5px solid #1e8e3e;
+      color: #137333;
+      font-weight: bold;
+    }
+
+    .form-group.field-active select.col-select,
+    .form-group.field-active select.tab-select,
+    .form-group.field-active select#draftSubject {
+      color: #137333;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="%23137333"><path d="M7 10l5 5 5-5z"/></svg>');
+    }
+
+    .form-group.field-active .syntax-note {
+      color: #188038;
+      font-weight: 600;
+    }
+
+    .form-group.field-inactive > label {
+      color: #80868b;
+      font-weight: normal;
+    }
+
+    .form-group.field-inactive input[type="text"],
+    .form-group.field-inactive select {
+      background-color: #f1f3f4;
+      border: 1px solid #dadce0;
+      color: #80868b;
+      font-weight: normal;
+    }
+
+    .form-group.field-inactive select.col-select,
+    .form-group.field-inactive select.tab-select,
+    .form-group.field-inactive select#draftSubject {
+      color: #80868b;
+      font-weight: normal;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="%2380868b"><path d="M7 10l5 5 5-5z"/></svg>');
+    }
+
+    .form-group.field-inactive .syntax-note {
+      color: #9aa0a6;
+    }
+
+    select:disabled {
+      opacity: 0.65;
+      cursor: wait;
     }
 
     .syntax-note {
       font-size: 11px;
-      color: #d93025;
+      color: #80868b;
       font-style: italic;
       display: block;
       margin-top: 4px;
       text-align: center;
+      transition: color 0.2s ease;
     }
 
     .req {
@@ -266,8 +322,8 @@
     </div>
 
     <div class="form-group">
-      <label>Tên Tab Sheet: <span class="req">*</span></label>
-      <input type="text" id="sheetName">
+      <label>Chọn Tab Sheet xử lý: <span class="req">*</span></label>
+      <select id="sheetName" class="tab-select" onchange="onSheetTabChange()"></select>
     </div>
 
     <div class="form-group">
@@ -416,14 +472,20 @@
   <script>
     let currentColumnsList = [];
 
+    const TRACKED_FIELD_IDS = [
+      'draftSubject', 'senderName', 'sheetName',
+      'colEmail', 'colCc', 'colBcc',
+      'colTitle', 'colName', 'colLink', 'colAttachment',
+      'colOther1', 'colOther2', 'colOther3', 'colOther4',
+      'colOther5', 'colOther6', 'colOther7', 'colOther8'
+    ];
+
     window.onload = function () {
       google.script.run
         .withSuccessHandler(function (autoData) {
           if (autoData.appVersion) {
             document.getElementById('versionText').innerText = autoData.appVersion;
           }
-
-          currentColumnsList = autoData.columnsList || [];
 
           const draftSelect = document.getElementById('draftSubject');
           draftSelect.innerHTML = "";
@@ -443,32 +505,126 @@
           }
 
           document.getElementById('senderName').value = autoData.senderName || "";
-          document.getElementById('sheetName').value = autoData.sheetName;
 
+          populateSheetSelect(autoData.sheetNames, autoData.sheetName);
+          applySheetScanResult(autoData);
 
-          populateSelect('colEmail', currentColumnsList, autoData.colEmail, true);
-          populateSelect('colCc', currentColumnsList, autoData.colCc, false);
-          populateSelect('colBcc', currentColumnsList, autoData.colBcc, false);
-          populateSelect('colTitle', currentColumnsList, autoData.colTitle, false);
-          populateSelect('colName', currentColumnsList, autoData.colName, false);
-          populateSelect('colLink', currentColumnsList, autoData.colLink, false);
-          populateSelect('colAttachment', currentColumnsList, autoData.colAttachment, false);
-
-          for (let i = 1; i <= 8; i++) {
-            populateSelect('colOther' + i, currentColumnsList, autoData['colOther' + i], false);
-          }
-
-          document.getElementById('delayTime').value = autoData.delayTime || 1;
+          document.getElementById('delayTime').value = autoData.delayTime || 0.5;
 
           if (document.getElementById('enableTracking')) {
             document.getElementById('enableTracking').checked = !!autoData.enableTracking;
           }
+
+          bindFieldHighlightListeners();
+          refreshAllFieldStates();
 
           document.getElementById('loading').style.display = 'none';
           document.getElementById('main-form').style.display = 'block';
         })
         .getAutoConfig();
     };
+
+    function populateSheetSelect(sheetNames, activeSheetName) {
+      const select = document.getElementById('sheetName');
+      select.innerHTML = "";
+      const names = (sheetNames && sheetNames.length > 0) ? sheetNames : (activeSheetName ? [activeSheetName] : []);
+
+      if (names.length === 0) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.text = "-- Không tìm thấy Tab Sheet --";
+        select.appendChild(opt);
+        return;
+      }
+
+      names.forEach(name => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.text = name;
+        if (name === activeSheetName) opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
+
+    function applySheetScanResult(sheetData) {
+      currentColumnsList = (sheetData && sheetData.columnsList) || [];
+
+      populateSelect('colEmail', currentColumnsList, sheetData.colEmail, true);
+      populateSelect('colCc', currentColumnsList, sheetData.colCc, false);
+      populateSelect('colBcc', currentColumnsList, sheetData.colBcc, false);
+      populateSelect('colTitle', currentColumnsList, sheetData.colTitle, false);
+      populateSelect('colName', currentColumnsList, sheetData.colName, false);
+      populateSelect('colLink', currentColumnsList, sheetData.colLink, false);
+      populateSelect('colAttachment', currentColumnsList, sheetData.colAttachment, false);
+
+      for (let i = 1; i <= 8; i++) {
+        populateSelect('colOther' + i, currentColumnsList, sheetData['colOther' + i] || "", false);
+      }
+    }
+
+    function updateFieldState(el) {
+      if (!el) return;
+      const group = el.closest('.form-group');
+      if (!group) return;
+      const hasValue = el.value !== null && el.value !== undefined && el.value.toString().trim() !== "";
+      group.classList.toggle('field-active', hasValue);
+      group.classList.toggle('field-inactive', !hasValue);
+    }
+
+    function refreshAllFieldStates() {
+      TRACKED_FIELD_IDS.forEach(id => {
+        updateFieldState(document.getElementById(id));
+      });
+    }
+
+    function bindFieldHighlightListeners() {
+      TRACKED_FIELD_IDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.highlightBound) return;
+        const eventType = el.tagName === 'INPUT' ? 'input' : 'change';
+        el.addEventListener(eventType, function () {
+          updateFieldState(el);
+        });
+        el.dataset.highlightBound = '1';
+      });
+    }
+
+    function setTabSwitchBusy(isBusy) {
+      ['sheetName', 'previewBtn', 'testBtn', 'runBtn', 'scheduleBtn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = isBusy;
+      });
+    }
+
+    function onSheetTabChange() {
+      const sheetSelect = document.getElementById('sheetName');
+      const selectedTab = sheetSelect ? sheetSelect.value : "";
+      if (!selectedTab) {
+        refreshAllFieldStates();
+        return;
+      }
+
+      setTabSwitchBusy(true);
+      const msgEl = document.getElementById('message');
+      msgEl.innerText = `⏳ Đang quét cột từ tab "${selectedTab}"...`;
+      msgEl.style.color = "#1a73e8";
+
+      google.script.run
+        .withSuccessHandler(function (sheetData) {
+          applySheetScanResult(sheetData);
+          refreshAllFieldStates();
+          setTabSwitchBusy(false);
+          msgEl.innerText = `✅ Đã nhận diện cột từ tab "${sheetData.sheetName}".`;
+          msgEl.style.color = "#0F9D58";
+        })
+        .withFailureHandler(function (error) {
+          setTabSwitchBusy(false);
+          refreshAllFieldStates();
+          msgEl.innerText = "Lỗi chuyển tab: " + error.message;
+          msgEl.style.color = "#d93025";
+        })
+        .getConfigForSheet(selectedTab);
+    }
 
     function populateSelect(selectId, columns, selectedLetter, isRequired) {
       const select = document.getElementById(selectId);

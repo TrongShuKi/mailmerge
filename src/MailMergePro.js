@@ -2,7 +2,7 @@
 // DỰ ÁN: GOOGLE SHEETS MAIL MERGE PRO
 // TỆP: MailMergePro.gs - CORE ENGINE (TÍCH HỢP OPEN TRACKING)
 // ============================================================================
-const APP_VERSION = "1.1.7";
+const APP_VERSION = "1.1.8";
 
 function onOpen(e) {
   const ui = SpreadsheetApp.getUi();
@@ -32,50 +32,24 @@ function showGuideDialog() {
   SpreadsheetApp.getUi().showModalDialog(html, '📖 Hướng Dẫn Sử Dụng MailMerge');
 }
 
-function getAutoConfig() {
-  const sheet = SpreadsheetApp.getActiveSheet();
-  const sheetName = sheet.getName();
-
-  const drafts = GmailApp.getDrafts();
-  const draftSubjects = [];
-  let defaultDraftSubject = "";
-
-  for (let i = 0; i < drafts.length; i++) {
-    let subj = drafts[i].getMessage().getSubject();
-    if (subj && !draftSubjects.includes(subj)) {
-      draftSubjects.push(subj);
-    }
+function indexToLetter(columnNumber) {
+  let letter = '';
+  while (columnNumber > 0) {
+    let temp = (columnNumber - 1) % 26;
+    letter = String.fromCharCode(temp + 65) + letter;
+    columnNumber = (columnNumber - temp - 1) / 26;
   }
-  if (draftSubjects.length > 0) defaultDraftSubject = draftSubjects[0];
+  return letter;
+}
 
-  let defaultSenderName = "";
-  if (drafts.length > 0) {
-    let rawFrom = drafts[0].getMessage().getFrom();
-    let nameMatch = rawFrom.match(/^"?([^"<]+)"?\s*<.*>/);
-    if (nameMatch && nameMatch[1]) defaultSenderName = nameMatch[1].trim();
-  }
-  if (!defaultSenderName) {
-    let activeEmail = Session.getActiveUser().getEmail();
-    defaultSenderName = activeEmail ? activeEmail.split('@')[0] : "";
-  }
-
-  function indexToLetter(columnNumber) {
-    let letter = '';
-    while (columnNumber > 0) {
-      let temp = (columnNumber - 1) % 26;
-      letter = String.fromCharCode(temp + 65) + letter;
-      columnNumber = (columnNumber - temp - 1) / 26;
-    }
-    return letter;
-  }
-
+/**
+ * Tự động nhận diện danh sách cột và gợi ý ánh xạ theo tiêu đề hàng 1 của Sheet
+ */
+function detectColumnMappingsFromHeaders(headers) {
   let colTitle = "", colName = "", colEmail = "", colLink = "", colAttachment = "", colCc = "", colBcc = "";
   const columnsList = [];
-  const lastCol = sheet.getLastColumn();
 
-  if (lastCol > 0) {
-    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-
+  if (Array.isArray(headers) && headers.length > 0) {
     const titleKeywords = ["danh xưng", "danhxung", "chức danh", "xưng hô", "title", "chức vụ", "đại từ"];
     const nameKeywords = ["tên", "ten", "name", "họ tên", "họ và tên", "người nhận", "recipient"];
     const emailKeywords = ["email", "e-mail", "mail address", "địa chỉ email", "hòm thư", "mail to"];
@@ -109,11 +83,6 @@ function getAutoConfig() {
   }
 
   return {
-    appVersion: APP_VERSION,
-    sheetName: sheetName,
-    draftSubjects: draftSubjects,
-    draftSubject: defaultDraftSubject,
-    senderName: defaultSenderName,
     columnsList: columnsList,
     colTitle: colTitle,
     colName: colName,
@@ -122,6 +91,83 @@ function getAutoConfig() {
     colBcc: colBcc,
     colLink: colLink,
     colAttachment: colAttachment,
+    colOther1: "", colOther2: "", colOther3: "", colOther4: "",
+    colOther5: "", colOther6: "", colOther7: "", colOther8: ""
+  };
+}
+
+/**
+ * Quét hàng tiêu đề của 1 đối tượng Sheet cụ thể để trả về cấu hình cột cho Sidebar
+ */
+function scanSheetConfig(sheet) {
+  const sheetName = sheet.getName();
+  const lastCol = sheet.getLastColumn();
+  const headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  const mapped = detectColumnMappingsFromHeaders(headers);
+  mapped.sheetName = sheetName;
+  return mapped;
+}
+
+/**
+ * API gọi từ Sidebar khi người dùng đổi Tab Sheet: chuyển tab hiển thị và quét lại toàn bộ cột
+ */
+function getConfigForSheet(targetSheetName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = targetSheetName ? ss.getSheetByName(targetSheetName) : ss.getActiveSheet();
+  if (!sheet) {
+    throw new Error("Không tìm thấy Tab Sheet: " + targetSheetName);
+  }
+  try {
+    ss.setActiveSheet(sheet);
+  } catch (_) {}
+  return scanSheetConfig(sheet);
+}
+
+function getAutoConfig() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss ? ss.getActiveSheet() : SpreadsheetApp.getActiveSheet();
+  const sheetNames = ss ? ss.getSheets().map(s => s.getName()) : [sheet.getName()];
+
+  const drafts = GmailApp.getDrafts();
+  const draftSubjects = [];
+  let defaultDraftSubject = "";
+
+  for (let i = 0; i < drafts.length; i++) {
+    let subj = drafts[i].getMessage().getSubject();
+    if (subj && !draftSubjects.includes(subj)) {
+      draftSubjects.push(subj);
+    }
+  }
+  if (draftSubjects.length > 0) defaultDraftSubject = draftSubjects[0];
+
+  let defaultSenderName = "";
+  if (drafts.length > 0) {
+    let rawFrom = drafts[0].getMessage().getFrom();
+    let nameMatch = rawFrom.match(/^"?([^"<]+)"?\s*<.*>/);
+    if (nameMatch && nameMatch[1]) defaultSenderName = nameMatch[1].trim();
+  }
+  if (!defaultSenderName) {
+    let activeEmail = Session.getActiveUser().getEmail();
+    defaultSenderName = activeEmail ? activeEmail.split('@')[0] : "";
+  }
+
+  const sheetConfig = scanSheetConfig(sheet);
+
+  return {
+    appVersion: APP_VERSION,
+    sheetNames: sheetNames,
+    sheetName: sheetConfig.sheetName,
+    draftSubjects: draftSubjects,
+    draftSubject: defaultDraftSubject,
+    senderName: defaultSenderName,
+    columnsList: sheetConfig.columnsList,
+    colTitle: sheetConfig.colTitle,
+    colName: sheetConfig.colName,
+    colEmail: sheetConfig.colEmail,
+    colCc: sheetConfig.colCc,
+    colBcc: sheetConfig.colBcc,
+    colLink: sheetConfig.colLink,
+    colAttachment: sheetConfig.colAttachment,
     colOther1: "", colOther2: "", colOther3: "", colOther4: "",
     colOther5: "", colOther6: "", colOther7: "", colOther8: "",
     delayTime: 0.5,
@@ -541,4 +587,16 @@ function sendTestEmail(config) {
   } catch (e) {
     return "Lỗi gửi thử: " + e.message;
   }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    APP_VERSION,
+    indexToLetter,
+    detectColumnMappingsFromHeaders,
+    scanSheetConfig,
+    getAutoConfig,
+    getConfigForSheet,
+    encodeEmojiToHtmlEntity
+  };
 }

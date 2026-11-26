@@ -1035,4 +1035,149 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
     });
   });
 
+  // =========================================================================
+  // 10. Kiểm tra Chuyển Tab & Tự động Nhận diện Cột Sidebar (MailMergePro.js)
+  // =========================================================================
+  describe('10. Sidebar Tab Switcher & Column Auto-Detection (MailMergePro.js)', () => {
+    const mailMergePro = require('../src/MailMergePro.js');
+    let origSpreadsheetApp;
+    let origGmailApp;
+    let origSession;
+
+    function createMockSheet(name, headers) {
+      return {
+        getName: () => name,
+        getLastColumn: () => headers.length,
+        getRange: (row, col, numRows, numCols) => ({
+          getValues: () => [headers.slice(0, numCols)]
+        })
+      };
+    }
+
+    function installMockEnvironment(sheets, initialActiveIndex = 0) {
+      let activeSheet = sheets[initialActiveIndex];
+      const byName = Object.fromEntries(sheets.map(s => [s.getName(), s]));
+
+      const mockSpreadsheet = {
+        getSheets: () => sheets,
+        getActiveSheet: () => activeSheet,
+        getSheetByName: (name) => byName[name] || null,
+        setActiveSheet: jest.fn((sheet) => {
+          activeSheet = sheet;
+          return sheet;
+        })
+      };
+
+      global.SpreadsheetApp = {
+        getActiveSpreadsheet: () => mockSpreadsheet,
+        getActiveSheet: () => activeSheet
+      };
+      global.GmailApp = {
+        getDrafts: () => [
+          {
+            getMessage: () => ({
+              getSubject: () => 'Test Campaign Draft',
+              getFrom: () => 'VietHope <mailer@viethope.org>'
+            })
+          }
+        ]
+      };
+      global.Session = {
+        getActiveUser: () => ({ getEmail: () => 'mailer@viethope.org' })
+      };
+
+      return { mockSpreadsheet, getActiveSheet: () => activeSheet };
+    }
+
+    beforeEach(() => {
+      origSpreadsheetApp = global.SpreadsheetApp;
+      origGmailApp = global.GmailApp;
+      origSession = global.Session;
+    });
+
+    afterEach(() => {
+      global.SpreadsheetApp = origSpreadsheetApp;
+      global.GmailApp = origGmailApp;
+      global.Session = origSession;
+    });
+
+    test('detectColumnMappingsFromHeaders nhận diện đúng các cột Việt/Anh và để trống các trường không dùng', () => {
+      const fullRes = mailMergePro.detectColumnMappingsFromHeaders([
+        'Danh xưng', 'Họ tên', 'Email', 'CC', 'BCC', 'Link', 'Đính kèm'
+      ]);
+      expect(fullRes.columnsList).toHaveLength(7);
+      expect(fullRes.columnsList[0]).toEqual({ letter: 'A', name: 'Danh xưng' });
+      expect(fullRes.columnsList[6]).toEqual({ letter: 'G', name: 'Đính kèm' });
+      expect(fullRes.colTitle).toBe('A');
+      expect(fullRes.colName).toBe('B');
+      expect(fullRes.colEmail).toBe('C');
+      expect(fullRes.colCc).toBe('D');
+      expect(fullRes.colBcc).toBe('E');
+      expect(fullRes.colLink).toBe('F');
+      expect(fullRes.colAttachment).toBe('G');
+      for (let i = 1; i <= 8; i++) {
+        expect(fullRes['colOther' + i]).toBe('');
+      }
+
+      const minimalRes = mailMergePro.detectColumnMappingsFromHeaders([
+        'STT', 'Email', 'Ghi chú', 'Status'
+      ]);
+      expect(minimalRes.colEmail).toBe('B');
+      expect(minimalRes.colTitle).toBe('');
+      expect(minimalRes.colName).toBe('');
+      expect(minimalRes.colCc).toBe('');
+      expect(minimalRes.colBcc).toBe('');
+      expect(minimalRes.colLink).toBe('');
+      expect(minimalRes.colAttachment).toBe('');
+    });
+
+    test('getAutoConfig trả về appVersion 1.1.8, danh sách sheetNames và cột của tab đang active', () => {
+      const tab1 = createMockSheet('Tab_1', ['Họ tên', 'Email', 'CC', 'Đính kèm']);
+      const tab2 = createMockSheet('Tab_2', ['STT', 'Họ tên', 'Trạng thái', 'Email']);
+      installMockEnvironment([tab1, tab2], 0);
+
+      const cfg = mailMergePro.getAutoConfig();
+      expect(cfg.appVersion).toBe('1.1.8');
+      expect(cfg.sheetNames).toEqual(['Tab_1', 'Tab_2']);
+      expect(cfg.sheetName).toBe('Tab_1');
+      expect(cfg.colName).toBe('A');
+      expect(cfg.colEmail).toBe('B');
+      expect(cfg.colCc).toBe('C');
+      expect(cfg.colAttachment).toBe('D');
+    });
+
+    test('getConfigForSheet chuyển tab active, quét lại vị trí Email mới và xóa các cột không còn dùng', () => {
+      const tab1 = createMockSheet('Tab_1', ['Họ tên', 'Email', 'CC', 'Đính kèm']);
+      const tab2 = createMockSheet('Tab_2', ['STT', 'Khách mời', 'Khu vực', 'Email']);
+      const { mockSpreadsheet, getActiveSheet } = installMockEnvironment([tab1, tab2], 0);
+
+      const res = mailMergePro.getConfigForSheet('Tab_2');
+      expect(mockSpreadsheet.setActiveSheet).toHaveBeenCalledWith(tab2);
+      expect(getActiveSheet().getName()).toBe('Tab_2');
+      expect(res.sheetName).toBe('Tab_2');
+      expect(res.colEmail).toBe('D');
+      expect(res.colCc).toBe('');
+      expect(res.colAttachment).toBe('');
+      expect(res.colTitle).toBe('');
+      for (let i = 1; i <= 8; i++) {
+        expect(res['colOther' + i]).toBe('');
+      }
+    });
+
+    test('getConfigForSheet xử lý tab trống và báo lỗi rõ ràng khi tab không tồn tại', () => {
+      const tabBlank = createMockSheet('Tab_Blank', []);
+      installMockEnvironment([tabBlank], 0);
+
+      const blankRes = mailMergePro.getConfigForSheet('Tab_Blank');
+      expect(blankRes.sheetName).toBe('Tab_Blank');
+      expect(blankRes.columnsList).toEqual([]);
+      expect(blankRes.colEmail).toBe('');
+      expect(blankRes.colOther1).toBe('');
+
+      expect(() => mailMergePro.getConfigForSheet('KhongTonTai')).toThrow(
+        'Không tìm thấy Tab Sheet: KhongTonTai'
+      );
+    });
+  });
+
 });
