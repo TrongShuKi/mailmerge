@@ -2,15 +2,20 @@
 // DỰ ÁN: GOOGLE SHEETS MAIL MERGE PRO
 // TỆP: MailMergePro.gs - CORE ENGINE (TÍCH HỢP OPEN TRACKING)
 // ============================================================================
-const APP_VERSION = "1.1.5";
+const APP_VERSION = "1.1.6";
 
-function onOpen() {
+function onOpen(e) {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('MailMerge')
     .addItem('Mở Bảng Điều Khiển', 'showSidebar')
+    .addItem('⏰ Schedule Manager', 'openScheduleViewerDialog')
     .addSeparator()
     .addItem('📖 Hướng dẫn sử dụng', 'showGuideDialog')
     .addToUi();
+}
+
+function onInstall(e) {
+  onOpen(e);
 }
 
 function showSidebar() {

@@ -16,25 +16,47 @@
       .btn { padding: 8px 16px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; transition: 0.2s; }
       .btn-primary { background-color: #673ab7; color: white; }
       .btn-primary:hover { background-color: #512da8; }
+      .btn-nav { background-color: #1a73e8; color: white; }
+      .btn-nav:hover { background-color: #1557b0; }
       .btn-danger { background-color: #d32f2f; color: white; padding: 5px 10px; font-size: 11px; }
       .btn-danger:hover { background-color: #b71c1c; }
       .btn:disabled { background-color: #ccc; cursor: not-allowed; }
 
       table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
-      th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+      th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; vertical-align: top; }
       th { background-color: #f1f3f4; color: #5f6368; font-weight: bold; }
       tr:hover { background-color: #fafafa; }
       
       #msg { margin-top: 10px; font-size: 13px; font-weight: bold; text-align: center; }
       .badge { background: #e8f0fe; color: #1a73e8; padding: 3px 6px; border-radius: 3px; font-weight: bold; }
-      .badge-count { background: #e6f4ea; color: #137333; padding: 3px 8px; border-radius: 10px; font-weight: bold; }
+      .badge-count { background: #e6f4ea; color: #137333; padding: 3px 8px; border-radius: 10px; font-weight: bold; white-space: nowrap; }
+      .badge-file { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 3px; margin-top: 3px; font-weight: bold; }
+      .badge-this-file { background: #e6f4ea; color: #137333; }
+      .badge-other-file { background: #fef7e0; color: #b06000; }
       .empty-notice { text-align: center; color: #888; font-style: italic; padding: 20px 0; }
+
+      .warn-box { margin-top: 10px; padding: 9px 12px; border-radius: 4px; font-size: 12px; line-height: 1.45; }
+      .warn-amber { background: #fef7e0; border-left: 4px solid #f9ab00; color: #7a4f01; }
+      .warn-red { background: #fce8e6; border-left: 4px solid #d93025; color: #a50e0e; }
+      .info-box { background: #e8f0fe; border-left: 4px solid #1a73e8; color: #174ea6; padding: 12px 14px; border-radius: 4px; font-size: 13px; line-height: 1.5; }
     </style>
   </head>
   <body>
 
-    <!-- KHỐI 1: LÊN LỊCH CHO CẤU HÌNH ĐANG CHỌN -->
-    <div class="card">
+    <!-- KHỐI 1A: CHẾ ĐỘ CHỈ XEM / QUẢN LÝ (MỞ TỪ THANH CÔNG CỤ BÊN NGOÀI) -->
+    <div class="card" id="view-only-card" style="display: none;">
+      <h3>⏰ Quản Lý Tiến Trình Hẹn Giờ</h3>
+      <div class="info-box">
+        <b>Chưa chọn cấu hình gửi cho lịch mới:</b> Để tạo lịch hẹn mới, bạn cần mở <b>Bảng Điều Khiển</b> thiết lập Bản nháp Gmail, Cột Email và các cột dữ liệu trước, rồi nhấn <b>⏰ SCHEDULE MANAGER</b> bên trong bảng đó.
+        <div style="margin-top: 10px;">
+          <button class="btn btn-nav" id="btnOpenSidebar" onclick="openSetupSidebar()">⚙️ Mở Bảng Điều Khiển để Setup</button>
+        </div>
+      </div>
+      <div id="view-only-msg" style="margin-top: 10px; font-size: 13px; font-weight: bold; text-align: center;"></div>
+    </div>
+
+    <!-- KHỐI 1B: LÊN LỊCH CHO CẤU HÌNH ĐANG CHỌN (MỞ TỪ SIDEBAR) -->
+    <div class="card" id="create-card" style="display: none;">
       <h3>⏰ Lên lịch gửi cho cấu hình đang chọn</h3>
       <div class="meta-grid">
         <div class="meta-item"><b>Bản nháp:</b> <span id="cur-subject">...</span></div>
@@ -46,10 +68,16 @@
         </div>
       </div>
 
+      <div id="same-doc-active-warning" class="warn-box warn-amber" style="display: none; margin-bottom: 10px;">
+        ⚠️ <b>File Sheet hiện tại đang có <span id="same-doc-count">1</span> lịch hẹn chờ.</b> Theo giới hạn của Google Add-on (tối đa 1 Trigger/file và tần suất &ge; 1 giờ/lần), hệ thống <b>không cho phép tạo thêm lịch cách nhau dưới 65 phút</b> trên cùng 1 file này. Muốn gửi sát giờ hơn, hãy <b>tạo bản sao sang file Sheet khác</b>.
+      </div>
+
       <div class="action-row">
-        <input type="datetime-local" id="scheduleTimeInput">
+        <input type="datetime-local" id="scheduleTimeInput" oninput="checkSameFileGapWarning()" onchange="checkSameFileGapWarning()">
         <button class="btn btn-primary" id="btnSchedule" onclick="submitNewSchedule()">📅 XÁC NHẬN LÊN LỊCH</button>
       </div>
+
+      <div id="close-gap-warning" class="warn-box warn-red" style="display: none;"></div>
       <div id="msg"></div>
     </div>
 
@@ -61,7 +89,7 @@
           <thead>
             <tr>
               <th>Bản nháp (Draft)</th>
-              <th>Tab Sheet</th>
+              <th>Tab Sheet / File</th>
               <th style="text-align: center;">Số lượng mail</th>
               <th>Thời gian hẹn gửi</th>
               <th style="text-align: center;">Hành động</th>
@@ -74,6 +102,10 @@
     </div>
 
     <script>
+      let currentMode = 'VIEW_ONLY';
+      let currentSpreadsheetId = null;
+      let cachedActiveCampaigns = [];
+
       window.onload = function() {
         loadData();
       };
@@ -91,16 +123,81 @@
       function loadData() {
         google.script.run
           .withSuccessHandler(function(res) {
-            if (res.currentConfig) {
+            currentMode = res.mode || (res.currentConfig ? 'CREATE_AND_MANAGE' : 'VIEW_ONLY');
+            currentSpreadsheetId = res.currentSpreadsheetId || null;
+            cachedActiveCampaigns = res.activeCampaigns || [];
+
+            if (currentMode === 'CREATE_AND_MANAGE' && res.currentConfig) {
+              document.getElementById('view-only-card').style.display = 'none';
+              document.getElementById('create-card').style.display = 'block';
+
               document.getElementById('cur-subject').innerText = res.currentConfig.draftSubject || "(Chưa có)";
               document.getElementById('cur-sheet').innerText = res.currentConfig.sheetName || "(Chưa có)";
               document.getElementById('cur-sender').innerText = res.currentConfig.senderName || "(Mặc định)";
               document.getElementById('cur-email').innerText = "Cột " + res.currentConfig.colEmail;
               document.getElementById('cur-count').innerText = (res.currentConfig.recipientCount || 0) + " email";
+
+              const sameDocCount = res.currentDocCampaignCount || 0;
+              const activeWarnEl = document.getElementById('same-doc-active-warning');
+              if (sameDocCount > 0) {
+                document.getElementById('same-doc-count').innerText = sameDocCount;
+                activeWarnEl.style.display = 'block';
+              } else {
+                activeWarnEl.style.display = 'none';
+              }
+              checkSameFileGapWarning();
+            } else {
+              document.getElementById('create-card').style.display = 'none';
+              document.getElementById('view-only-card').style.display = 'block';
             }
-            renderTable(res.activeCampaigns || []);
+
+            renderTable(cachedActiveCampaigns);
           })
           .getScheduleManagerData();
+      }
+
+      function getSameFileCloseConflict(timeVal) {
+        if (!timeVal || !currentSpreadsheetId) return null;
+        const targetMs = new Date(timeVal).getTime();
+        if (isNaN(targetMs)) return null;
+
+        const MIN_SAME_FILE_GAP_MS = 65 * 60 * 1000;
+        let closest = null;
+        let minDiff = Infinity;
+
+        cachedActiveCampaigns.forEach(function(camp) {
+          const campSsId = (camp.config && camp.config.spreadsheetId) || camp.spreadsheetId;
+          if (campSsId !== currentSpreadsheetId) return;
+          const campMs = new Date(camp.scheduleTimeStr).getTime();
+          if (isNaN(campMs)) return;
+
+          const diff = Math.abs(campMs - targetMs);
+          if (diff < MIN_SAME_FILE_GAP_MS && diff < minDiff) {
+            minDiff = diff;
+            closest = {
+              campaign: camp,
+              diffMinutes: Math.max(0, Math.round(diff / 60000))
+            };
+          }
+        });
+        return closest;
+      }
+
+      function checkSameFileGapWarning() {
+        const timeVal = document.getElementById('scheduleTimeInput').value;
+        const warnEl = document.getElementById('close-gap-warning');
+        const btn = document.getElementById('btnSchedule');
+        const conflict = getSameFileCloseConflict(timeVal);
+
+        if (conflict) {
+          warnEl.innerHTML = `⛔ <b>Không thể lên lịch (&lt; 65 phút trên CÙNG file Sheet):</b> Thời gian bạn chọn chỉ cách lịch <i>"${escapeHtml(conflict.campaign.draftSubject)}"</i> khoảng <b>${conflict.diffMinutes} phút</b> (&lt; 65 phút). Google Add-on sẽ chặn lịch thứ 2 — vui lòng chọn giờ cách ít nhất 65 phút hoặc tách sang file Sheet bản sao khác!`;
+          warnEl.style.display = 'block';
+          if (btn && btn.innerText !== 'ĐANG XỬ LÝ...') btn.disabled = true;
+        } else {
+          warnEl.style.display = 'none';
+          warnEl.innerHTML = '';
+          if (btn && btn.innerText !== 'ĐANG XỬ LÝ...') btn.disabled = false;
+        }
       }
 
       function renderTable(campaigns) {
@@ -121,10 +218,16 @@
           const dateFormatted = new Date(camp.scheduleTimeStr).toLocaleString('vi-VN');
           const countDisplay = camp.recipientCount !== undefined ? camp.recipientCount : "-";
           const safeId = escapeHtml(camp.id);
+          const campSsId = (camp.config && camp.config.spreadsheetId) || camp.spreadsheetId;
+          const isCurrentFile = !currentSpreadsheetId || campSsId === currentSpreadsheetId;
+          const fileBadge = isCurrentFile
+            ? `<div class="badge-file badge-this-file">📄 File hiện tại</div>`
+            : `<div class="badge-file badge-other-file">📎 ${escapeHtml(camp.spreadsheetName || "File Sheet khác")}</div>`;
+
           const row = document.createElement('tr');
           row.innerHTML = `
             <td><b>${escapeHtml(camp.draftSubject)}</b></td>
-            <td>${escapeHtml(camp.sheetName)}</td>
+            <td>${escapeHtml(camp.sheetName)}${fileBadge}</td>
             <td style="text-align: center;"><span class="badge-count">${countDisplay} mail</span></td>
             <td style="color: #673ab7; font-weight: bold;">${escapeHtml(dateFormatted)}</td>
             <td style="text-align: center;">
@@ -135,6 +238,22 @@
         });
       }
 
+      function openSetupSidebar() {
+        const btn = document.getElementById('btnOpenSidebar');
+        btn.disabled = true;
+        btn.innerText = "ĐANG MỞ BẢNG ĐIỀU KHIỂN...";
+        google.script.run
+          .withSuccessHandler(function() {
+            google.script.host.close();
+          })
+          .withFailureHandler(function(err) {
+            btn.disabled = false;
+            btn.innerText = "⚙️ Mở Bảng Điều Khiển để Setup";
+            showMsg("Lỗi: " + err.message, "#d93025");
+          })
+          .showSidebar();
+      }
+
       function submitNewSchedule() {
         const timeVal = document.getElementById('scheduleTimeInput').value;
         if (!timeVal) {
@@ -142,10 +261,16 @@
           return;
         }
 
+        const conflict = getSameFileCloseConflict(timeVal);
+        if (conflict) {
+          showMsg(`Không thể lên lịch: các lịch trên cùng 1 file phải cách nhau tối thiểu 65 phút (đang cách ${conflict.diffMinutes} phút).`, "#d93025");
+          return;
+        }
+
         const btn = document.getElementById('btnSchedule');
         btn.disabled = true;
         btn.innerText = "ĐANG XỬ LÝ...";
-        showMsg("Đang lưu lịch hẹn và đồng bộ Trigger...", "#1a73e8");
+        showMsg("Đang lưu lịch hẹn và đồng bộ Trigger độc lập cho file này...", "#1a73e8");
 
         google.script.run
           .withSuccessHandler(function(res) {
@@ -154,6 +279,7 @@
             if (res.includes("thành công")) {
               showMsg(res, "#0F9D58");
               document.getElementById('scheduleTimeInput').value = "";
+              document.getElementById('close-gap-warning').style.display = 'none';
               loadData();
             } else {
               showMsg(res, "#d93025");
@@ -190,9 +316,11 @@
       }
 
       function showMsg(text, color) {
-        const el = document.getElementById('msg');
-        el.innerText = text;
-        el.style.color = color;
+        const msgEl = currentMode === 'VIEW_ONLY'
+          ? document.getElementById('view-only-msg')
+          : document.getElementById('msg');
+        msgEl.innerText = text;
+        msgEl.style.color = color;
       }
     </script>
   </body>

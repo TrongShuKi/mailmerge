@@ -1,17 +1,18 @@
 // ============================================================================
 // DỰ ÁN: GOOGLE SHEETS MAIL MERGE PRO
-// TỆP: ScheduleLogic.js - QUẢN LÝ HẸN GIỜ ĐA CHIẾN DỊCH (1 TRIGGER NỐI TIẾP)
+// TỆP: ScheduleLogic.js - QUẢN LÝ HẸN GIỜ ĐỘC LẬP THEO TỪNG FILE SHEET
 // ============================================================================
 
 const SCHEDULE_HANDLER_NAME = 'processScheduledCampaigns';
-const SCHEDULE_DUE_TOLERANCE_MS = 60 * 1000;      // Dung sai 1 phút cho thời điểm kích hoạt Trigger
-const SCHEDULE_MIN_TRIGGER_LEAD_MS = 65 * 1000;   // Khoảng đệm tối thiểu >1 phút khi tạo Trigger .at()
-const SCHEDULE_EXPIRATION_GRACE_MS = 5 * 60 * 1000; // Giữ lịch trễ tối đa 5 phút phòng Google bắn Trigger chậm
-const SCHEDULE_MAX_BATCH_RUNTIME_MS = 210 * 1000; // Giới hạn an toàn ~3.5 phút/lần chạy (tránh vượt 6 phút của GAS)
+const SCHEDULE_DUE_TOLERANCE_MS = 60 * 1000;       // Dung sai 1 phút cho thời điểm kích hoạt Trigger
+const SCHEDULE_MIN_TRIGGER_LEAD_MS = 65 * 1000;    // Khoảng đệm tối thiểu >1 phút khi tạo Trigger .at()
+const SCHEDULE_EXPIRATION_GRACE_MS = 5 * 60 * 1000;  // Giữ lịch trễ tối đa 5 phút phòng Google bắn Trigger chậm
+const SCHEDULE_MAX_BATCH_RUNTIME_MS = 210 * 1000;  // Giới hạn an toàn ~3.5 phút/lần chạy (tránh vượt 6 phút của GAS)
+const SCHEDULE_SAME_FILE_MIN_GAP_MS = 65 * 60 * 1000; // Bắt buộc cách >= 65 phút giữa 2 lịch trên cùng 1 file Sheet
+const SCHEDULE_CLOCK_COOLDOWN_LEAD_MS = 62 * 60 * 1000; // Khoảng đệm > 1 giờ khi đặt Trigger kế tiếp từ trong Trigger nền (tránh lỗi "Clock events must be scheduled at least 1 hour(s) apart")
 
 /**
- * Mở cửa sổ Modal quản lý lịch hẹn
- * Sử dụng CacheService để lưu cấu hình tạm, tuyệt đối không làm đầy bộ nhớ Properties
+ * Mở cửa sổ Modal quản lý lịch hẹn từ Sidebar (cho phép tạo lịch mới + quản lý hàng đợi)
  */
 function openScheduleManagerDialog(config) {
   try {
@@ -19,11 +20,29 @@ function openScheduleManagerDialog(config) {
     PropertiesService.getUserProperties().deleteProperty('CURRENT_CAMPAIGN_CONFIG');
 
     const html = HtmlService.createHtmlOutputFromFile('ScheduleDialog')
-      .setWidth(780)
-      .setHeight(540);
+      .setWidth(800)
+      .setHeight(560);
     SpreadsheetApp.getUi().showModalDialog(html, '📅 Quản Lý Lịch Gửi Email (Multi-Campaign)');
   } catch (e) {
     throw new Error("Lỗi khi mở Quản lý lịch: " + e.message);
+  }
+}
+
+/**
+ * Mở cửa sổ Modal Schedule Manager từ thanh công cụ bên ngoài (chỉ quản lý/hủy lịch,
+ * điều hướng người dùng mở Bảng điều khiển để setup cấu hình trước khi tạo lịch mới).
+ */
+function openScheduleViewerDialog() {
+  try {
+    CacheService.getUserCache().remove('CURRENT_CAMPAIGN_CONFIG');
+    PropertiesService.getUserProperties().deleteProperty('CURRENT_CAMPAIGN_CONFIG');
+
+    const html = HtmlService.createHtmlOutputFromFile('ScheduleDialog')
+      .setWidth(800)
+      .setHeight(520);
+    SpreadsheetApp.getUi().showModalDialog(html, '⏰ Schedule Manager - Quản Lý Tiến Trình Hẹn Giờ');
+  } catch (e) {
+    throw new Error("Lỗi khi mở Schedule Manager: " + e.message);
   }
 }
 
@@ -83,10 +102,29 @@ function autoCleanExpiredCampaigns(campaigns, currentTimestampMs, graceMs) {
 }
 
 /**
- * Tách danh sách chiến dịch thành 2 nhóm: đến hạn chạy ngay (due) và chờ tương lai (future),
- * sắp xếp nhóm đến hạn theo thứ tự thời gian tăng dần.
+ * Lọc danh sách chiến dịch theo một file Spreadsheet cụ thể (hoặc toàn bộ nếu không truyền spreadsheetId)
  */
-function partitionDueAndFutureCampaigns(campaigns, currentTimestampMs, dueToleranceMs) {
+function filterCampaignsForDoc(campaigns, spreadsheetId) {
+  const result = {};
+  if (!campaigns || typeof campaigns !== 'object') return result;
+
+  for (let id in campaigns) {
+    let camp = campaigns[id];
+    if (!camp) continue;
+    let campSsId = camp.config && camp.config.spreadsheetId ? camp.config.spreadsheetId : camp.spreadsheetId;
+    if (!spreadsheetId || campSsId === spreadsheetId) {
+      result[id] = camp;
+    }
+  }
+  return result;
+}
+
+/**
+ * Tách danh sách chiến dịch thành 2 nhóm: đến hạn chạy ngay (due) và chờ tương lai/file khác (future).
+ * Nếu truyền targetSpreadsheetId, chỉ đưa các chiến dịch đến hạn của đúng file đó vào due;
+ * các chiến dịch của file khác được giữ nguyên trong future để Trigger riêng của file đó xử lý.
+ */
+function partitionDueAndFutureCampaigns(campaigns, currentTimestampMs, dueToleranceMs, targetSpreadsheetId) {
   const now = typeof currentTimestampMs === 'number' ? currentTimestampMs : new Date().getTime();
   const tolerance = typeof dueToleranceMs === 'number' ? dueToleranceMs : SCHEDULE_DUE_TOLERANCE_MS;
   const due = [];
@@ -102,7 +140,10 @@ function partitionDueAndFutureCampaigns(campaigns, currentTimestampMs, dueTolera
     let scheduleTime = new Date(camp.scheduleTimeStr).getTime();
     if (isNaN(scheduleTime)) continue;
 
-    if (scheduleTime <= (now + tolerance)) {
+    let campSsId = camp.config && camp.config.spreadsheetId ? camp.config.spreadsheetId : camp.spreadsheetId;
+    let matchesTargetDoc = !targetSpreadsheetId || campSsId === targetSpreadsheetId;
+
+    if (matchesTargetDoc && scheduleTime <= (now + tolerance)) {
       due.push(camp);
     } else {
       future[id] = camp;
@@ -117,7 +158,7 @@ function partitionDueAndFutureCampaigns(campaigns, currentTimestampMs, dueTolera
 }
 
 /**
- * Tìm chiến dịch có thời gian hẹn sớm nhất trong hàng đợi
+ * Tìm chiến dịch có thời gian hẹn sớm nhất trong tập chiến dịch truyền vào
  */
 function getEarliestCampaign(campaigns) {
   if (!campaigns || typeof campaigns !== 'object') return null;
@@ -148,6 +189,37 @@ function computeNextTriggerTimestampMs(campaigns, currentTimestampMs, minLeadMs)
   const now = typeof currentTimestampMs === 'number' ? currentTimestampMs : new Date().getTime();
   const lead = typeof minLeadMs === 'number' ? minLeadMs : SCHEDULE_MIN_TRIGGER_LEAD_MS;
   return Math.max(earliest.scheduleTimeMs, now + lead);
+}
+
+/**
+ * Kiểm tra trong CÙNG 1 file Spreadsheet có lịch nào đang đặt cách targetTimeMs dưới minGapMs (< 65 phút) không
+ */
+function findCloseCampaignGapOnSameDoc(campaigns, spreadsheetId, targetTimeMs, minGapMs) {
+  if (!campaigns || !spreadsheetId || isNaN(targetTimeMs)) return null;
+  const threshold = typeof minGapMs === 'number' ? minGapMs : SCHEDULE_SAME_FILE_MIN_GAP_MS;
+  let closestConflict = null;
+  let minDiffMs = Infinity;
+
+  for (let id in campaigns) {
+    let camp = campaigns[id];
+    if (!camp || !camp.scheduleTimeStr) continue;
+    let campSsId = camp.config && camp.config.spreadsheetId ? camp.config.spreadsheetId : camp.spreadsheetId;
+    if (campSsId !== spreadsheetId) continue;
+
+    let campTimeMs = new Date(camp.scheduleTimeStr).getTime();
+    if (isNaN(campTimeMs)) continue;
+
+    let diffMs = Math.abs(campTimeMs - targetTimeMs);
+    if (diffMs < threshold && diffMs < minDiffMs) {
+      minDiffMs = diffMs;
+      closestConflict = {
+        campaign: camp,
+        diffMinutes: Math.max(0, Math.round(diffMs / 60000))
+      };
+    }
+  }
+
+  return closestConflict;
 }
 
 /**
@@ -203,31 +275,142 @@ function saveCampaignsToProperties(campaigns) {
   PropertiesService.getUserProperties().setProperty('SCHEDULED_CAMPAIGNS', JSON.stringify(campaigns || {}));
 }
 
-/**
- * Đồng bộ hóa cơ chế 1 TRIGGER DUY NHẤT (Single Chained Trigger):
- * - Luôn xóa sạch các trigger hẹn giờ cũ của handler 'processScheduledCampaigns'.
- * - Nếu hàng đợi còn chiến dịch, chỉ tạo ĐÚNG 1 trigger trỏ tới mốc giờ SỚM NHẤT.
- *   Khi mốc đó chạy xong, processScheduledCampaigns() sẽ tự động đặt tiếp trigger kế tiếp.
- * Nhờ vậy KHÔNG BAO GIỜ vượt quá giới hạn "1 time-based trigger / tài liệu" của Google Add-on.
- */
-function syncScheduleTrigger(campaigns, currentTimestampMs) {
-  cleanupAllScheduleTriggers();
+function loadDocTriggerMap() {
+  const raw = PropertiesService.getUserProperties().getProperty('DOC_TRIGGER_MAP');
+  return raw ? JSON.parse(raw) : {};
+}
 
-  const nextTriggerMs = computeNextTriggerTimestampMs(campaigns, currentTimestampMs, SCHEDULE_MIN_TRIGGER_LEAD_MS);
+function saveDocTriggerMap(map) {
+  PropertiesService.getUserProperties().setProperty('DOC_TRIGGER_MAP', JSON.stringify(map || {}));
+}
+
+function findSpreadsheetIdByTriggerUid(docTriggerMap, triggerUid) {
+  if (!docTriggerMap || !triggerUid) return null;
+  const uidStr = String(triggerUid);
+  for (let ssId in docTriggerMap) {
+    if (String(docTriggerMap[ssId]) === uidStr) {
+      return ssId;
+    }
+  }
+  return null;
+}
+
+/**
+ * Xóa trigger đúng theo UID (không đụng chạm đến Trigger của các file Spreadsheet khác)
+ */
+function deleteTriggerByUid(triggerUid) {
+  if (!triggerUid) return false;
+  const uidStr = String(triggerUid);
+  const triggers = ScriptApp.getProjectTriggers();
+  let deleted = false;
+  for (let i = 0; i < triggers.length; i++) {
+    if (String(triggers[i].getUniqueId()) === uidStr) {
+      ScriptApp.deleteTrigger(triggers[i]);
+      deleted = true;
+    }
+  }
+  return deleted;
+}
+
+/**
+ * Dọn Trigger thuộc về một file Spreadsheet cụ thể (và các trigger mồ côi cũ chưa được gán file),
+ * tuyệt đối GIỮ NGUYÊN Trigger của các file Spreadsheet khác đang hoạt động.
+ */
+function cleanupTriggersForDoc(targetSpreadsheetId) {
+  const docTriggerMap = loadDocTriggerMap();
+  const targetUid = targetSpreadsheetId ? docTriggerMap[targetSpreadsheetId] : null;
+
+  // Thu thập danh sách UID đang thuộc quyền sở hữu của các file khác để bảo vệ
+  const protectedOtherUids = {};
+  for (let ssId in docTriggerMap) {
+    if (!targetSpreadsheetId || ssId !== targetSpreadsheetId) {
+      if (docTriggerMap[ssId]) {
+        protectedOtherUids[String(docTriggerMap[ssId])] = true;
+      }
+    }
+  }
+
+  const triggers = ScriptApp.getProjectTriggers();
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() !== SCHEDULE_HANDLER_NAME) continue;
+    const uid = String(triggers[i].getUniqueId());
+    const isTargetOwned = targetUid && uid === String(targetUid);
+    const isOrphanLegacyTrigger = !protectedOtherUids[uid];
+
+    if (!targetSpreadsheetId || isTargetOwned || isOrphanLegacyTrigger) {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+
+  if (targetSpreadsheetId) {
+    delete docTriggerMap[targetSpreadsheetId];
+    saveDocTriggerMap(docTriggerMap);
+  } else {
+    saveDocTriggerMap({});
+  }
+}
+
+/**
+ * Đồng bộ 1 Trigger ĐỘC LẬP cho riêng file Spreadsheet truyền vào (Per-Document Trigger).
+ * - Khi người dùng dùng 2 file Sheet khác nhau, mỗi file giữ 1 Trigger riêng biệt hoàn toàn
+ *   qua DOC_TRIGGER_MAP[spreadsheetId], không bao giờ xóa nhầm Trigger của file kia.
+ */
+function syncDocumentTrigger(targetSpreadsheetId, allCampaigns, currentTimestampMs, minLeadMsOverride) {
+  if (!targetSpreadsheetId) {
+    return syncScheduleTrigger(allCampaigns, currentTimestampMs, minLeadMsOverride);
+  }
+
+  cleanupTriggersForDoc(targetSpreadsheetId);
+
+  const docCampaigns = filterCampaignsForDoc(allCampaigns, targetSpreadsheetId);
+  const leadMs = typeof minLeadMsOverride === 'number' ? minLeadMsOverride : SCHEDULE_MIN_TRIGGER_LEAD_MS;
+  const nextTriggerMs = computeNextTriggerTimestampMs(docCampaigns, currentTimestampMs, leadMs);
   if (nextTriggerMs === null) {
     return null;
   }
 
-  ScriptApp.newTrigger(SCHEDULE_HANDLER_NAME)
+  const created = ScriptApp.newTrigger(SCHEDULE_HANDLER_NAME)
     .timeBased()
     .at(new Date(nextTriggerMs))
     .create();
+
+  const docTriggerMap = loadDocTriggerMap();
+  docTriggerMap[targetSpreadsheetId] = String(created.getUniqueId());
+  saveDocTriggerMap(docTriggerMap);
 
   return nextTriggerMs;
 }
 
 /**
- * Lấy dữ liệu khởi tạo cho hộp thoại ScheduleDialog
+ * Hàm tương thích ngược: đồng bộ trigger cho toàn cục hoặc cho tất cả file có chiến dịch
+ */
+function syncScheduleTrigger(campaigns, currentTimestampMs, minLeadMsOverride) {
+  cleanupAllScheduleTriggers();
+
+  const leadMs = typeof minLeadMsOverride === 'number' ? minLeadMsOverride : SCHEDULE_MIN_TRIGGER_LEAD_MS;
+  const nextTriggerMs = computeNextTriggerTimestampMs(campaigns, currentTimestampMs, leadMs);
+  if (nextTriggerMs === null) {
+    return null;
+  }
+
+  const created = ScriptApp.newTrigger(SCHEDULE_HANDLER_NAME)
+    .timeBased()
+    .at(new Date(nextTriggerMs))
+    .create();
+
+  const earliest = getEarliestCampaign(campaigns);
+  const ssId = earliest && earliest.campaign && earliest.campaign.config ? earliest.campaign.config.spreadsheetId : null;
+  if (ssId) {
+    const map = {};
+    map[ssId] = String(created.getUniqueId());
+    saveDocTriggerMap(map);
+  }
+
+  return nextTriggerMs;
+}
+
+/**
+ * Lấy dữ liệu khởi tạo cho hộp thoại ScheduleDialog (hỗ trợ cả chế độ từ Sidebar & chế độ Xem từ thanh công cụ)
  */
 function getScheduleManagerData() {
   let currentConfigStr = CacheService.getUserCache().get('CURRENT_CAMPAIGN_CONFIG');
@@ -235,6 +418,10 @@ function getScheduleManagerData() {
     currentConfigStr = PropertiesService.getUserProperties().getProperty('CURRENT_CAMPAIGN_CONFIG');
   }
   let currentConfig = currentConfigStr ? JSON.parse(currentConfigStr) : null;
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const currentSpreadsheetId = ss ? ss.getId() : null;
+  const currentSpreadsheetName = ss ? ss.getName() : "";
 
   if (currentConfig) {
     currentConfig.recipientCount = countEligibleRecipients(
@@ -248,12 +435,33 @@ function getScheduleManagerData() {
   campaigns = autoCleanExpiredCampaigns(campaigns, Date.now(), SCHEDULE_EXPIRATION_GRACE_MS);
   saveCampaignsToProperties(campaigns);
 
+  // Dọn các map trigger mồ côi nếu không còn chiến dịch nào cho spreadsheet đó
+  const docTriggerMap = loadDocTriggerMap();
+  let mapDirty = false;
+  for (let ssId in docTriggerMap) {
+    const docCamps = filterCampaignsForDoc(campaigns, ssId);
+    if (Object.keys(docCamps).length === 0) {
+      deleteTriggerByUid(docTriggerMap[ssId]);
+      delete docTriggerMap[ssId];
+      mapDirty = true;
+    }
+  }
+  if (mapDirty) saveDocTriggerMap(docTriggerMap);
+
   const activeList = Object.values(campaigns).sort(function (a, b) {
     return new Date(a.scheduleTimeStr).getTime() - new Date(b.scheduleTimeStr).getTime();
   });
 
+  const currentDocCampaignCount = currentSpreadsheetId
+    ? Object.keys(filterCampaignsForDoc(campaigns, currentSpreadsheetId)).length
+    : 0;
+
   return {
+    mode: currentConfig ? 'CREATE_AND_MANAGE' : 'VIEW_ONLY',
+    currentSpreadsheetId: currentSpreadsheetId,
+    currentSpreadsheetName: currentSpreadsheetName,
     currentConfig: currentConfig,
+    currentDocCampaignCount: currentDocCampaignCount,
     activeCampaigns: activeList
   };
 }
@@ -306,7 +514,8 @@ function markSheetRowsAsScheduled(ss, minimalConfig) {
 }
 
 /**
- * Thêm một chiến dịch hẹn giờ mới vào danh sách chờ (an toàn giao dịch, tự rollback nếu tạo Trigger lỗi)
+ * Thêm một chiến dịch hẹn giờ mới vào danh sách chờ cho file Sheet hiện tại
+ * (cô lập Trigger theo từng file, tự rollback nếu tạo Trigger lỗi)
  */
 function createNewScheduledCampaign(scheduleTimeStr) {
   const lock = LockService.getUserLock();
@@ -316,6 +525,7 @@ function createNewScheduledCampaign(scheduleTimeStr) {
 
   let previousCampaigns = null;
   let savedToProperties = false;
+  let currentSsId = null;
 
   try {
     if (!scheduleTimeStr) return "Lỗi: Vui lòng chọn ngày và giờ hẹn!";
@@ -327,7 +537,6 @@ function createNewScheduledCampaign(scheduleTimeStr) {
       return "Lỗi: Thời gian hẹn giờ không hợp lệ!";
     }
 
-    // Kiểm tra thời gian hẹn phải cách hiện tại ít nhất 2 phút
     if (scheduleDate.getTime() <= now.getTime() + 120000) {
       return "Lỗi: Thời gian hẹn giờ phải cách thời điểm hiện tại ít nhất 2 phút.";
     }
@@ -336,14 +545,16 @@ function createNewScheduledCampaign(scheduleTimeStr) {
     if (!currentConfigStr) {
       currentConfigStr = PropertiesService.getUserProperties().getProperty('CURRENT_CAMPAIGN_CONFIG');
     }
-    if (!currentConfigStr) return "Lỗi: Phiên làm việc đã hết hạn. Vui lòng mở lại Bảng điều khiển.";
+    if (!currentConfigStr) return "Lỗi: Bạn cần mở Bảng Điều Khiển để setup cấu hình gửi trước khi lên lịch mới.";
 
     const rawConfig = JSON.parse(currentConfigStr);
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    rawConfig.spreadsheetId = ss.getId();
+    currentSsId = ss.getId();
+    const currentSsName = ss.getName();
+    rawConfig.spreadsheetId = currentSsId;
 
     const minimalConfig = {
-      spreadsheetId: rawConfig.spreadsheetId,
+      spreadsheetId: currentSsId,
       sheetName: rawConfig.sheetName,
       statusName: rawConfig.statusName || "Status",
       draftSubject: rawConfig.draftSubject,
@@ -373,20 +584,31 @@ function createNewScheduledCampaign(scheduleTimeStr) {
       return "Lỗi: Không tìm thấy người nhận nào hợp lệ để lên lịch!";
     }
 
-    // 1. Đọc danh sách hiện tại & dọn rác quá hạn
     previousCampaigns = autoCleanExpiredCampaigns(
       loadCampaignsFromProperties(),
       now.getTime(),
       SCHEDULE_EXPIRATION_GRACE_MS
     );
 
-    if (hasDuplicateCampaign(previousCampaigns, minimalConfig.spreadsheetId, minimalConfig.sheetName, minimalConfig.draftSubject, scheduleDate.getTime())) {
+    if (hasDuplicateCampaign(previousCampaigns, currentSsId, minimalConfig.sheetName, minimalConfig.draftSubject, scheduleDate.getTime())) {
       return "Lỗi: Chiến dịch cho bản nháp và tab Sheet này vào thời điểm đó đã có trong hàng đợi!";
+    }
+
+    const closeConflict = findCloseCampaignGapOnSameDoc(
+      previousCampaigns,
+      currentSsId,
+      scheduleDate.getTime(),
+      SCHEDULE_SAME_FILE_MIN_GAP_MS
+    );
+    if (closeConflict) {
+      return `Lỗi: Không thể đặt 2 lịch cách nhau dưới 65 phút trên cùng 1 file Sheet (đang có lịch "${closeConflict.campaign.draftSubject}" cách ${closeConflict.diffMinutes} phút). Vui lòng chọn giờ cách ít nhất 65 phút hoặc tách sang 1 file Sheet bản sao khác!`;
     }
 
     const campaignId = "camp_" + now.getTime() + "_" + Math.floor(Math.random() * 1000);
     const newCampaign = {
       id: campaignId,
+      spreadsheetId: currentSsId,
+      spreadsheetName: currentSsName,
       draftSubject: minimalConfig.draftSubject,
       sheetName: minimalConfig.sheetName,
       senderName: minimalConfig.senderName || "(Mặc định)",
@@ -398,13 +620,12 @@ function createNewScheduledCampaign(scheduleTimeStr) {
     const nextCampaigns = Object.assign({}, previousCampaigns);
     nextCampaigns[campaignId] = newCampaign;
 
-    // 2. Đồng bộ 1 Trigger duy nhất TRƯỚC khi chốt lưu Properties (chống sinh "chiến dịch ma")
+    // Đồng bộ 1 Trigger ĐỘC LẬP cho riêng file Spreadsheet này (không đụng Trigger của file khác)
     try {
-      syncScheduleTrigger(nextCampaigns, now.getTime());
+      syncDocumentTrigger(currentSsId, nextCampaigns, now.getTime());
     } catch (triggerErr) {
-      // Khôi phục trigger cho các chiến dịch trước đó nếu không tạo được trigger mới
       try {
-        syncScheduleTrigger(previousCampaigns, now.getTime());
+        syncDocumentTrigger(currentSsId, previousCampaigns, now.getTime());
       } catch (_) {}
       return "Lỗi lên lịch: " + triggerErr.message;
     }
@@ -412,15 +633,14 @@ function createNewScheduledCampaign(scheduleTimeStr) {
     saveCampaignsToProperties(nextCampaigns);
     savedToProperties = true;
 
-    // 3. Đánh dấu trạng thái lên lịch trên Sheet
     markSheetRowsAsScheduled(ss, minimalConfig);
 
     return `Đã lên lịch chiến dịch thành công cho ${recipientCount} email!`;
   } catch (e) {
-    if (savedToProperties && previousCampaigns !== null) {
+    if (savedToProperties && previousCampaigns !== null && currentSsId) {
       try {
         saveCampaignsToProperties(previousCampaigns);
-        syncScheduleTrigger(previousCampaigns, Date.now());
+        syncDocumentTrigger(currentSsId, previousCampaigns, Date.now());
       } catch (_) {}
     }
     return "Lỗi lên lịch: " + e.message;
@@ -430,7 +650,7 @@ function createNewScheduledCampaign(scheduleTimeStr) {
 }
 
 /**
- * Hủy một chiến dịch cụ thể theo ID và tự động dời Trigger duy nhất sang chiến dịch kế tiếp
+ * Hủy một chiến dịch cụ thể theo ID và chỉ đồng bộ lại Trigger của đúng file Sheet sở hữu chiến dịch đó
  */
 function cancelSingleCampaign(campaignId) {
   const lock = LockService.getUserLock();
@@ -443,17 +663,20 @@ function cancelSingleCampaign(campaignId) {
     const targetCampaign = campaigns[campaignId];
     if (!targetCampaign) return "Chiến dịch không tồn tại hoặc đã chạy xong.";
 
+    const targetSsId = targetCampaign.config && targetCampaign.config.spreadsheetId
+      ? targetCampaign.config.spreadsheetId
+      : targetCampaign.spreadsheetId;
+
     delete campaigns[campaignId];
     campaigns = autoCleanExpiredCampaigns(campaigns, Date.now(), SCHEDULE_EXPIRATION_GRACE_MS);
 
-    // 1. Xóa nhãn "🕒 Đã lên lịch" trên Sheet nếu không còn chiến dịch nào khác dùng cùng Sheet & Tab
     if (
-      targetCampaign.config &&
-      !hasOtherCampaignForSheet(campaigns, targetCampaign.config.spreadsheetId, targetCampaign.config.sheetName)
+      targetSsId &&
+      !hasOtherCampaignForSheet(campaigns, targetSsId, targetCampaign.sheetName)
     ) {
       try {
-        const ss = SpreadsheetApp.openById(targetCampaign.config.spreadsheetId);
-        const sheet = ss.getSheetByName(targetCampaign.config.sheetName);
+        const ss = SpreadsheetApp.openById(targetSsId);
+        const sheet = ss.getSheetByName(targetCampaign.sheetName);
         if (sheet) {
           const data = sheet.getDataRange().getValues();
           const statusColIndex = data[0].indexOf(targetCampaign.config.statusName);
@@ -480,9 +703,12 @@ function cancelSingleCampaign(campaignId) {
       }
     }
 
-    // 2. Lưu danh sách mới & đồng bộ lại Trigger duy nhất (chuyển sang chiến dịch kế tiếp hoặc xóa sạch nếu rỗng)
     saveCampaignsToProperties(campaigns);
-    syncScheduleTrigger(campaigns, Date.now());
+    if (targetSsId) {
+      syncDocumentTrigger(targetSsId, campaigns, Date.now());
+    } else {
+      syncScheduleTrigger(campaigns, Date.now());
+    }
 
     return "Đã hủy chiến dịch thành công!";
   } catch (e) {
@@ -493,12 +719,20 @@ function cancelSingleCampaign(campaignId) {
 }
 
 /**
- * Hàm điều phối ngầm được kích hoạt bởi Time Trigger duy nhất.
- * Chạy tất cả chiến dịch đến hạn và tự động đặt 1 Trigger nối tiếp cho chiến dịch kế tiếp.
+ * Hàm điều phối ngầm được kích hoạt bởi Time Trigger.
+ * Sử dụng e.triggerUid để xác định đúng file Spreadsheet vừa đến hẹn, xóa đúng Trigger của file đó
+ * mà KHÔNG ảnh hưởng Trigger của các file Spreadsheet khác đang chờ song song.
  */
-function processScheduledCampaigns() {
+function processScheduledCampaigns(e) {
   const execStartMs = Date.now();
   const lock = LockService.getUserLock();
+  const firedUid = (e && e.triggerUid) ? String(e.triggerUid) : null;
+  let targetSsId = null;
+
+  if (firedUid) {
+    const initialMap = loadDocTriggerMap();
+    targetSsId = findSpreadsheetIdByTriggerUid(initialMap, firedUid);
+  }
 
   while (true) {
     let batchToRun = [];
@@ -510,37 +744,68 @@ function processScheduledCampaigns() {
     try {
       const campaigns = loadCampaignsFromProperties();
       const now = Date.now();
-      const split = partitionDueAndFutureCampaigns(campaigns, now, SCHEDULE_DUE_TOLERANCE_MS);
+      const split = partitionDueAndFutureCampaigns(campaigns, now, SCHEDULE_DUE_TOLERANCE_MS, targetSsId);
 
       if (split.due.length === 0) {
         const cleaned = autoCleanExpiredCampaigns(split.future, now, SCHEDULE_EXPIRATION_GRACE_MS);
-        saveCampaignsToProperties(cleaned);
-        syncScheduleTrigger(cleaned, now);
+
+        if (targetSsId) {
+          // Bảo đảm chiến dịch kế tiếp trên cùng file luôn cách >= 62 phút sau thời điểm vừa chạy,
+          // tránh Google ném lỗi "Clock events must be scheduled at least 1 hour(s) apart." nếu đợt trước chạy chậm.
+          const minAllowedMs = now + SCHEDULE_CLOCK_COOLDOWN_LEAD_MS;
+          const docRemaining = filterCampaignsForDoc(cleaned, targetSsId);
+          for (let cid in docRemaining) {
+            let t = new Date(cleaned[cid].scheduleTimeStr).getTime();
+            if (!isNaN(t) && t < minAllowedMs) {
+              cleaned[cid].scheduleTimeStr = new Date(minAllowedMs).toISOString();
+            }
+          }
+          saveCampaignsToProperties(cleaned);
+          syncDocumentTrigger(targetSsId, cleaned, now, SCHEDULE_CLOCK_COOLDOWN_LEAD_MS);
+        } else {
+          saveCampaignsToProperties(cleaned);
+          if (firedUid) deleteTriggerByUid(firedUid);
+        }
         return;
       }
 
-      // Bảo vệ chống vượt giới hạn thực thi 6 phút của Apps Script:
-      // Nếu đã chạy quá ngưỡng an toàn, dời các chiến dịch đến hạn còn lại sang +65 giây để lượt Trigger tiếp theo xử lý
       if ((now - execStartMs) >= SCHEDULE_MAX_BATCH_RUNTIME_MS) {
-        const deferredTimeIso = new Date(now + SCHEDULE_MIN_TRIGGER_LEAD_MS).toISOString();
+        const deferredTimeIso = new Date(now + SCHEDULE_CLOCK_COOLDOWN_LEAD_MS).toISOString();
         for (let i = 0; i < split.due.length; i++) {
           split.due[i].scheduleTimeStr = deferredTimeIso;
           split.future[split.due[i].id] = split.due[i];
         }
         saveCampaignsToProperties(split.future);
-        syncScheduleTrigger(split.future, now);
+
+        if (targetSsId) {
+          syncDocumentTrigger(targetSsId, split.future, now, SCHEDULE_CLOCK_COOLDOWN_LEAD_MS);
+        } else {
+          syncScheduleTrigger(split.future, now, SCHEDULE_CLOCK_COOLDOWN_LEAD_MS);
+        }
         return;
       }
 
       // Rút các chiến dịch đến hạn ra khỏi hàng đợi trước khi gửi (chống gửi trùng)
       batchToRun = split.due;
       saveCampaignsToProperties(split.future);
-      cleanupAllScheduleTriggers();
+
+      // Xóa đúng Trigger vừa kích hoạt của file hiện tại (giữ nguyên Trigger các file khác)
+      if (firedUid) {
+        deleteTriggerByUid(firedUid);
+        const map = loadDocTriggerMap();
+        if (targetSsId && map[targetSsId] === firedUid) {
+          delete map[targetSsId];
+          saveDocTriggerMap(map);
+        }
+      } else if (targetSsId) {
+        cleanupTriggersForDoc(targetSsId);
+      } else {
+        cleanupAllScheduleTriggers();
+      }
     } finally {
       lock.releaseLock();
     }
 
-    // Thực thi gửi ngoài Lock để tránh nghẽn phiên làm việc UI
     for (let i = 0; i < batchToRun.length; i++) {
       const camp = batchToRun[i];
       try {
@@ -553,7 +818,7 @@ function processScheduledCampaigns() {
 }
 
 /**
- * Xóa sạch các trigger hẹn giờ ngầm của hàm điều phối
+ * Xóa sạch toàn bộ trigger hẹn giờ ngầm của hàm điều phối (dùng khi reset toàn bộ)
  */
 function cleanupAllScheduleTriggers() {
   const triggers = ScriptApp.getProjectTriggers();
@@ -562,6 +827,7 @@ function cleanupAllScheduleTriggers() {
       ScriptApp.deleteTrigger(triggers[i]);
     }
   }
+  saveDocTriggerMap({});
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -571,12 +837,18 @@ if (typeof module !== 'undefined' && module.exports) {
     SCHEDULE_MIN_TRIGGER_LEAD_MS,
     SCHEDULE_EXPIRATION_GRACE_MS,
     SCHEDULE_MAX_BATCH_RUNTIME_MS,
+    SCHEDULE_SAME_FILE_MIN_GAP_MS,
+    SCHEDULE_CLOCK_COOLDOWN_LEAD_MS,
     autoCleanExpiredCampaigns,
+    filterCampaignsForDoc,
     partitionDueAndFutureCampaigns,
     getEarliestCampaign,
     computeNextTriggerTimestampMs,
+    findCloseCampaignGapOnSameDoc,
     hasDuplicateCampaign,
     hasOtherCampaignForSheet,
+    cleanupTriggersForDoc,
+    syncDocumentTrigger,
     syncScheduleTrigger,
     getScheduleManagerData,
     createNewScheduledCampaign,
