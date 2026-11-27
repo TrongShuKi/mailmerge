@@ -1131,13 +1131,13 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
       expect(minimalRes.colAttachment).toBe('');
     });
 
-    test('getAutoConfig trả về appVersion 1.1.9, danh sách sheetNames và cột của tab đang active', () => {
+    test('getAutoConfig trả về appVersion 1.1.10, danh sách sheetNames và cột của tab đang active', () => {
       const tab1 = createMockSheet('Tab_1', ['Họ tên', 'Email', 'CC', 'Đính kèm']);
       const tab2 = createMockSheet('Tab_2', ['STT', 'Họ tên', 'Trạng thái', 'Email']);
       installMockEnvironment([tab1, tab2], 0);
 
       const cfg = mailMergePro.getAutoConfig();
-      expect(cfg.appVersion).toBe('1.1.9');
+      expect(cfg.appVersion).toBe('1.1.10');
       expect(cfg.sheetNames).toEqual(['Tab_1', 'Tab_2']);
       expect(cfg.sheetName).toBe('Tab_1');
       expect(cfg.colName).toBe('A');
@@ -1630,6 +1630,206 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
         JSON.parse(vm.runInContext('JSON.stringify(previewRows[1])', ctx))
       );
       expect(rendered).toBe('Xin chào Trần Minh - $200 - https://vh.org/m');
+    });
+  });
+
+  // =========================================================================
+  // 13. Kiểm tra Tối Ưu Tốc Độ Schedule Manager & Phản Hồi Nút Sidebar
+  // =========================================================================
+  describe('13. Schedule Manager Performance, Single-Roundtrip State & Sidebar Busy Feedback', () => {
+    const ScheduleLogic = require('../src/ScheduleLogic.js');
+    const fs = require('fs');
+    const path = require('path');
+
+    let origPropertiesService;
+    let origCacheService;
+    let origLockService;
+    let origSpreadsheetApp;
+    let origScriptApp;
+
+    beforeEach(() => {
+      origPropertiesService = global.PropertiesService;
+      origCacheService = global.CacheService;
+      origLockService = global.LockService;
+      origSpreadsheetApp = global.SpreadsheetApp;
+      origScriptApp = global.ScriptApp;
+    });
+
+    afterEach(() => {
+      global.PropertiesService = origPropertiesService;
+      global.CacheService = origCacheService;
+      global.LockService = origLockService;
+      global.SpreadsheetApp = origSpreadsheetApp;
+      global.ScriptApp = origScriptApp;
+    });
+
+    test('getScheduleManagerData bỏ qua dòng trống/Đã gửi trên RAM, không ghi Properties dư và ước lượng nhanh khi > 150 dòng', () => {
+      const data = [['Họ tên', 'Email', 'Status']];
+      for (let i = 1; i <= 200; i++) {
+        data.push([`SV ${i}`, `sv${i}@vh.org`, '']);
+      }
+      for (let j = 1; j <= 100; j++) {
+        data.push([`Sent ${j}`, `sent${j}@vh.org`, 'Đã gửi']);
+      }
+      for (let k = 0; k < 500; k++) {
+        data.push(['', '', '']);
+      }
+
+      const propsStore = {};
+      const setPropertyMock = jest.fn((k, v) => { propsStore[k] = String(v); });
+
+      const mockSheet = {
+        getFilter: jest.fn(() => null),
+        isRowHiddenByFilter: jest.fn(() => false),
+        isRowHiddenByUser: jest.fn(() => false),
+        getDataRange: jest.fn(() => ({ getValues: () => data }))
+      };
+
+      global.PropertiesService = {
+        getUserProperties: () => ({
+          getProperty: (k) => (k in propsStore ? propsStore[k] : null),
+          setProperty: setPropertyMock,
+          deleteProperty: (k) => { delete propsStore[k]; }
+        })
+      };
+      global.CacheService = {
+        getUserCache: () => ({
+          get: (k) => (k === 'CURRENT_CAMPAIGN_CONFIG'
+            ? JSON.stringify({ draftSubject: 'Big Draft', sheetName: 'BigTab', colEmail: 2, statusName: 'Status' })
+            : null)
+        })
+      };
+      global.SpreadsheetApp = {
+        getActiveSpreadsheet: () => ({
+          getId: () => 'ss_fast',
+          getName: () => 'Big Sheet',
+          getSheetByName: (name) => (name === 'BigTab' ? mockSheet : null)
+        })
+      };
+
+      const res = ScheduleLogic.getScheduleManagerData();
+      expect(res.mode).toBe('CREATE_AND_MANAGE');
+      expect(res.currentConfig.recipientCount).toBe(200);
+      expect(res.currentConfig.recipientCountApproximate).toBe(true);
+      // Danh sách > 150 dòng -> 0 RPC kiểm tra ẩn/hiện dòng; không có rác -> 0 ghi Properties
+      expect(mockSheet.isRowHiddenByFilter).not.toHaveBeenCalled();
+      expect(mockSheet.isRowHiddenByUser).not.toHaveBeenCalled();
+      expect(setPropertyMock).not.toHaveBeenCalled();
+    });
+
+    test('createScheduledCampaignWithState & cancelSingleCampaignWithState chỉ đọc Sheet 1 lần và trả ngay activeCampaigns', () => {
+      const data = [
+        ['Họ tên', 'Email', 'Status'],
+        ['Minh', 'minh@vh.org', ''],
+        ['', '', ''],
+        ['Lan', 'lan@vh.org', '']
+      ];
+      for (let k = 0; k < 400; k++) {
+        data.push(['', '', '']);
+      }
+
+      const propsStore = {};
+      const activeTriggers = [];
+      let trigSeq = 1;
+      const setValuesMock = jest.fn((vals) => {
+        for (let r = 0; r < vals.length; r++) {
+          data[r + 1][2] = vals[r][0];
+        }
+      });
+      const getDataRangeMock = jest.fn(() => ({ getValues: () => data.map(r => r.slice()) }));
+
+      const mockSheet = {
+        getFilter: jest.fn(() => null),
+        isRowHiddenByFilter: jest.fn(() => false),
+        isRowHiddenByUser: jest.fn(() => false),
+        getDataRange: getDataRangeMock,
+        getRange: jest.fn(() => ({
+          setValue: jest.fn(),
+          setValues: setValuesMock
+        }))
+      };
+
+      const ssWrapper = {
+        getId: () => 'ss_single',
+        getName: () => 'Single Trip Sheet',
+        getSheetByName: (name) => (name === 'Tab1' ? mockSheet : null)
+      };
+
+      global.PropertiesService = {
+        getUserProperties: () => ({
+          getProperty: (k) => (k in propsStore ? propsStore[k] : null),
+          setProperty: (k, v) => { propsStore[k] = String(v); },
+          deleteProperty: (k) => { delete propsStore[k]; }
+        })
+      };
+      global.CacheService = {
+        getUserCache: () => ({
+          get: (k) => (k === 'CURRENT_CAMPAIGN_CONFIG'
+            ? JSON.stringify({ draftSubject: 'Fast Camp', sheetName: 'Tab1', colEmail: 2, statusName: 'Status' })
+            : null)
+        })
+      };
+      global.LockService = {
+        getUserLock: () => ({ tryLock: () => true, releaseLock: () => {} })
+      };
+      global.SpreadsheetApp = {
+        getActiveSpreadsheet: () => ssWrapper,
+        openById: () => ssWrapper
+      };
+      global.ScriptApp = {
+        getProjectTriggers: () => activeTriggers.slice(),
+        deleteTrigger: (t) => {
+          const i = activeTriggers.findIndex(x => x.getUniqueId() === t.getUniqueId());
+          if (i !== -1) activeTriggers.splice(i, 1);
+        },
+        newTrigger: (fn) => ({
+          timeBased: () => ({
+            at: () => ({
+              create: () => {
+                const t = { getHandlerFunction: () => fn, getUniqueId: () => 'tr_' + (trigSeq++) };
+                activeTriggers.push(t);
+                return t;
+              }
+            })
+          })
+        })
+      };
+
+      const futureIso = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+      const createRes = ScheduleLogic.createScheduledCampaignWithState(futureIso);
+
+      expect(createRes.success).toBe(true);
+      expect(createRes.message).toBe('Đã lên lịch chiến dịch thành công cho 2 email!');
+      expect(createRes.activeCampaigns).toHaveLength(1);
+      expect(createRes.activeCampaigns[0].draftSubject).toBe('Fast Camp');
+      // Chỉ đọc Sheet đúng 1 lần khi tạo lịch và không gọi isRowHidden cho 400 dòng trống
+      expect(getDataRangeMock).toHaveBeenCalledTimes(1);
+      expect(mockSheet.isRowHiddenByFilter).toHaveBeenCalledTimes(0);
+      expect(mockSheet.isRowHiddenByUser).toHaveBeenCalledTimes(2);
+      expect(data[1][2]).toBe('🕒 Đã lên lịch');
+      expect(data[3][2]).toBe('🕒 Đã lên lịch');
+
+      // Hủy ngay qua endpoint 1 lượt
+      getDataRangeMock.mockClear();
+      const cancelRes = ScheduleLogic.cancelSingleCampaignWithState(createRes.activeCampaigns[0].id);
+      expect(cancelRes.success).toBe(true);
+      expect(cancelRes.activeCampaigns).toEqual([]);
+      expect(getDataRangeMock).toHaveBeenCalledTimes(1);
+      expect(data[1][2]).toBe('');
+      expect(data[3][2]).toBe('');
+    });
+
+    test('Sidebar.html làm mờ nút Schedule khi bấm và ScheduleDialog.html dùng endpoint 1 lượt không gọi loadData() lặp', () => {
+      const sidebarHtml = fs.readFileSync(path.join(__dirname, '..', 'src', 'Sidebar.html'), 'utf8');
+      const dialogHtml = fs.readFileSync(path.join(__dirname, '..', 'src', 'ScheduleDialog.html'), 'utf8');
+
+      expect(sidebarHtml).toContain('.btn-schedule:disabled');
+      expect(sidebarHtml).toContain('scheduleBtn.disabled = true;');
+      expect(sidebarHtml).toContain('.openScheduleManagerDialog(config);');
+
+      expect(dialogHtml).toContain('.createScheduledCampaignWithState(timeVal)');
+      expect(dialogHtml).toContain('.cancelSingleCampaignWithState(campaignId)');
+      expect(dialogHtml).toContain('checkSameFileGapWarning()');
     });
   });
 

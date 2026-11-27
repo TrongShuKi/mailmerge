@@ -172,7 +172,7 @@
       color: white;
     }
 
-    .btn-schedule:hover {
+    .btn-schedule:hover:not(:disabled) {
       background-color: #512da8;
     }
 
@@ -180,6 +180,13 @@
       background-color: #ccc;
       cursor: not-allowed;
       color: #666;
+    }
+
+    .btn-schedule:disabled {
+      background-color: #673ab7;
+      color: white;
+      opacity: 0.55;
+      cursor: wait;
     }
 
     #message {
@@ -799,9 +806,28 @@
         document.getElementById('message').style.color = "#d93025";
         return;
       }
-      document.getElementById('message').innerText = "";
+
+      const scheduleBtn = document.getElementById('scheduleBtn');
+      const msgEl = document.getElementById('message');
+      scheduleBtn.disabled = true;
+      scheduleBtn.innerText = "⏳ ĐANG MỞ SCHEDULE...";
+      msgEl.innerText = "⏳ Đang mở Quản lý lịch gửi email...";
+      msgEl.style.color = "#673ab7";
+
       const config = getConfigData();
-      google.script.run.openScheduleManagerDialog(config);
+      google.script.run
+        .withSuccessHandler(function () {
+          scheduleBtn.disabled = false;
+          scheduleBtn.innerText = "⏰ SCHEDULE MANAGER";
+          msgEl.innerText = "";
+        })
+        .withFailureHandler(function (error) {
+          scheduleBtn.disabled = false;
+          scheduleBtn.innerText = "⏰ SCHEDULE MANAGER";
+          msgEl.innerText = "Lỗi: " + error.message;
+          msgEl.style.color = "#d93025";
+        })
+        .openScheduleManagerDialog(config);
     }
   </script>
 </body>

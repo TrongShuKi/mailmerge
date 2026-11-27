@@ -1,8 +1,8 @@
 # 📬 MailMerge Pro — Google Sheets Automation Engine
 
 [![MailMerge CI/CD](https://github.com/TrongShuKi/mailmerge/actions/workflows/deploy.yml/badge.svg)](https://github.com/TrongShuKi/mailmerge/actions/workflows/deploy.yml)
-[![Version](https://img.shields.io/badge/version-1.1.9-blue.svg)](https://github.com/TrongShuKi/mailmerge/releases)
-[![Tests](https://img.shields.io/badge/tests-46%2F46%20passing-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-1.1.10-blue.svg)](https://github.com/TrongShuKi/mailmerge/releases)
+[![Tests](https://img.shields.io/badge/tests-49%2F49%20passing-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Google%20Workspace-orange.svg)]()
 
 
@@ -46,7 +46,7 @@ mailmerge/
 │   ├── Guide.html          # Cẩm nang hướng dẫn sử dụng tích hợp
 │   └── appsscript.json     # Manifest khai báo quyền OAuth chuẩn xác
 ├── tests/
-│   └── mailmerge.test.js   # 46 bài Unit Test toàn diện (12 suites, Jest Test Runner)
+│   └── mailmerge.test.js   # 49 bài Unit Test toàn diện (13 suites, Jest Test Runner)
 └── package.json            # Cấu hình dự án, Jest và Clasp dependencies
 ```
 
@@ -58,7 +58,7 @@ Dự án áp dụng mô hình **Automated Release Pipeline** thông qua GitHub A
 
 ```mermaid
 graph LR
-    A["Push / Pull Request"] --> B["Jest Test Runner (46 Tests)"]
+    A["Push / Pull Request"] --> B["Jest Test Runner (49 Tests)"]
     B -->|PASS| C["Clasp Push to HEAD"]
     B -->|FAIL| D["Block Build & Alert"]
     C --> E{"Có Git Tag v* ?"}
@@ -67,11 +67,11 @@ graph LR
 ```
 
 1. **Giai đoạn CI (Continuous Integration):**
-   * Mỗi Pull Request hoặc Commit lên `main` kích hoạt chạy tự động toàn bộ 46 bài Unit Test. Nếu có lỗi, Pipeline lập tức dừng lại, ngăn chặn đưa mã lỗi lên Production.
+   * Mỗi Pull Request hoặc Commit lên `main` kích hoạt chạy tự động toàn bộ 49 bài Unit Test. Nếu có lỗi, Pipeline lập tức dừng lại, ngăn chặn đưa mã lỗi lên Production.
 2. **Giai đoạn CD (Continuous Delivery):**
    * Đồng bộ tự động mã nguồn mới nhất lên môi trường Apps Script.
 3. **Phát hành tự động bằng Git Tag (Zero-touch Release):**
-   * Khi tạo tag (VD: `v1.1.9`), Robot tự động cập nhật đè trực tiếp vào 2 Deployment Active (Add-on Google Sheets và Web App Tracking), không cần mở Apps Script thao tác thủ công.
+   * Khi tạo tag (VD: `v1.1.10`), Robot tự động cập nhật đè trực tiếp vào 2 Deployment Active (Add-on Google Sheets và Web App Tracking), không cần mở Apps Script thao tác thủ công.
 4. **DevSecOps & Bảo mật:**
    * Áp dụng **Template Hydration**: Tuyệt đối không lưu Script ID và OAuth Credentials (`.clasprc.json`, `creds.json`) trên Git công khai. Tất cả được quản lý an toàn qua **GitHub Secrets**.
 
@@ -92,7 +92,7 @@ cd mailmerge
 # 2. Cài đặt các gói phụ thuộc
 npm install
 
-# 3. Chạy toàn bộ 46 bài kiểm thử Jest
+# 3. Chạy toàn bộ 49 bài kiểm thử Jest
 npm test
 
 # 4. Đẩy mã nguồn thủ công lên Google Apps Script (nếu cần)

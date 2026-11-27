@@ -91,6 +91,7 @@
             </tr>
           </thead>
           <tbody id="campaign-list-body">
+            <tr><td colspan="5" class="empty-notice">⏳ Đang tải danh sách chiến dịch...</td></tr>
           </tbody>
         </table>
       </div>
@@ -130,7 +131,8 @@
               document.getElementById('cur-sheet').innerText = res.currentConfig.sheetName || "(Chưa có)";
               document.getElementById('cur-sender').innerText = res.currentConfig.senderName || "(Mặc định)";
               document.getElementById('cur-email').innerText = "Cột " + res.currentConfig.colEmail;
-              document.getElementById('cur-count').innerText = (res.currentConfig.recipientCount || 0) + " email";
+              const prefix = res.currentConfig.recipientCountApproximate ? "~" : "";
+              document.getElementById('cur-count').innerText = prefix + (res.currentConfig.recipientCount || 0) + " email";
 
               checkSameFileGapWarning();
             } else {
@@ -218,7 +220,7 @@
             <td style="text-align: center;"><span class="badge-count">${countDisplay} mail</span></td>
             <td style="color: #673ab7; font-weight: bold;">${escapeHtml(dateFormatted)}</td>
             <td style="text-align: center;">
-              <button class="btn btn-danger cancel-btn" onclick="cancelCampaign('${safeId}')">Hủy</button>
+              <button class="btn btn-danger cancel-btn" onclick="cancelCampaign('${safeId}', this)">Hủy</button>
             </td>
           `;
           tbody.appendChild(row);
@@ -263,43 +265,65 @@
           .withSuccessHandler(function(res) {
             btn.disabled = false;
             btn.innerText = "📅 XÁC NHẬN LÊN LỊCH";
-            if (res.includes("thành công")) {
-              showMsg(res, "#0F9D58");
+            if (res && res.activeCampaigns) {
+              cachedActiveCampaigns = res.activeCampaigns;
+              if (res.currentSpreadsheetId) currentSpreadsheetId = res.currentSpreadsheetId;
+              renderTable(cachedActiveCampaigns);
+            }
+            if (res && res.success) {
+              showMsg(res.message, "#0F9D58");
               document.getElementById('scheduleTimeInput').value = "";
               document.getElementById('close-gap-warning').style.display = 'none';
-              loadData();
             } else {
-              showMsg(res, "#d93025");
+              showMsg((res && res.message) || "Không thể lên lịch.", "#d93025");
             }
+            checkSameFileGapWarning();
           })
           .withFailureHandler(function(err) {
             btn.disabled = false;
             btn.innerText = "📅 XÁC NHẬN LÊN LỊCH";
             showMsg("Lỗi: " + err.message, "#d93025");
           })
-          .createNewScheduledCampaign(timeVal);
+          .createScheduledCampaignWithState(timeVal);
       }
 
-      function setCancelButtonsDisabled(disabled) {
+      function setCancelButtonsDisabled(disabled, activeBtn) {
         const buttons = document.querySelectorAll('.cancel-btn');
-        buttons.forEach(function(b) { b.disabled = disabled; });
+        buttons.forEach(function(b) {
+          b.disabled = disabled;
+          b.style.opacity = disabled ? '0.6' : '1';
+          if (disabled && b === activeBtn) {
+            b.innerText = "Đang hủy...";
+          } else if (!disabled) {
+            b.innerText = "Hủy";
+          }
+        });
       }
 
-      function cancelCampaign(campaignId) {
+      function cancelCampaign(campaignId, clickedBtn) {
         if (!confirm("Bạn có chắc chắn muốn hủy chiến dịch hẹn giờ này không?")) return;
 
-        setCancelButtonsDisabled(true);
+        setCancelButtonsDisabled(true, clickedBtn);
         showMsg("Đang hủy chiến dịch...", "#1a73e8");
         google.script.run
           .withSuccessHandler(function(res) {
-            showMsg(res, res.includes("thành công") ? "#0F9D58" : "#d93025");
-            loadData();
+            if (res && res.activeCampaigns) {
+              cachedActiveCampaigns = res.activeCampaigns;
+              renderTable(cachedActiveCampaigns);
+            } else {
+              setCancelButtonsDisabled(false);
+            }
+            if (currentMode === 'CREATE_AND_MANAGE') {
+              checkSameFileGapWarning();
+            }
+            const msgText = (res && res.message) || "";
+            showMsg(msgText, (res && res.success) ? "#0F9D58" : "#d93025");
           })
           .withFailureHandler(function(err) {
             setCancelButtonsDisabled(false);
             showMsg("Lỗi: " + err.message, "#d93025");
           })
-          .cancelSingleCampaign(campaignId);
+          .cancelSingleCampaignWithState(campaignId);
       }
 
       function showMsg(text, color) {

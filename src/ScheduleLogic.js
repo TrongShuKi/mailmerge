@@ -46,34 +46,83 @@ function openScheduleViewerDialog() {
   }
 }
 
+const SCHEDULE_COUNT_FAST_THRESHOLD = 150;
+
+function sortCampaignsByTime(campaigns) {
+  return Object.values(campaigns || {}).sort(function (a, b) {
+    return new Date(a.scheduleTimeStr).getTime() - new Date(b.scheduleTimeStr).getTime();
+  });
+}
+
+function collectEligibleRowIndicesFromData(sheet, data, colEmailIndex, statusName, options) {
+  const opts = options || {};
+  if (!Array.isArray(data) || data.length <= 1) {
+    return { eligibleIndices: [], approximate: false, statusColIndex: -1 };
+  }
+
+  const headers = data[0] || [];
+  let statusColIndex = headers.indexOf(statusName || "Status");
+  const emailIdx = colEmailIndex - 1;
+  const ramCandidates = [];
+
+  // Bước 1: Lọc trên RAM trước để bỏ qua tức thì dòng trống / sai email / đã gửi (0 RPC call)
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (!row) continue;
+
+    const email = row[emailIdx];
+    if (email === null || email === undefined || email === "") continue;
+    const emailStr = String(email).trim();
+    if (!emailStr || emailStr.indexOf("@") === -1) continue;
+
+    if (statusColIndex !== -1) {
+      const status = row[statusColIndex] ? String(row[statusColIndex]).trim() : "";
+      if (status === "Đã gửi" || status === "Sent") continue;
+    }
+
+    ramCandidates.push(i);
+  }
+
+  // Bước 2: Nếu chỉ cần ước lượng nhanh cho UI danh sách lớn (> 150 dòng) thì trả về ngay
+  if (opts.fastLimit && ramCandidates.length > opts.fastLimit) {
+    return {
+      eligibleIndices: ramCandidates,
+      approximate: true,
+      statusColIndex: statusColIndex
+    };
+  }
+
+  const hasFilter = sheet && typeof sheet.getFilter === "function" ? !!sheet.getFilter() : true;
+  const canCheckFilter = hasFilter && sheet && typeof sheet.isRowHiddenByFilter === "function";
+  const canCheckUser = sheet && typeof sheet.isRowHiddenByUser === "function";
+  const eligibleIndices = [];
+
+  for (let k = 0; k < ramCandidates.length; k++) {
+    const idx = ramCandidates[k];
+    if (canCheckFilter && sheet.isRowHiddenByFilter(idx + 1)) continue;
+    if (canCheckUser && sheet.isRowHiddenByUser(idx + 1)) continue;
+    eligibleIndices.push(idx);
+  }
+
+  return {
+    eligibleIndices: eligibleIndices,
+    approximate: false,
+    statusColIndex: statusColIndex
+  };
+}
+
 /**
  * Hàm trợ năng: Đếm số lượng email hợp lệ và chưa gửi trên Sheet
  */
-function countEligibleRecipients(sheetName, colEmailIndex, statusName) {
+function countEligibleRecipients(sheetName, colEmailIndex, statusName, options) {
   try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss ? ss.getSheetByName(sheetName) : null;
     if (!sheet) return 0;
 
     const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return 0;
-
-    const headers = data[0];
-    let statusColIndex = headers.indexOf(statusName || "Status");
-    if (statusColIndex === -1) statusColIndex = headers.length;
-
-    let count = 0;
-    for (let i = 1; i < data.length; i++) {
-      if (sheet.isRowHiddenByFilter(i + 1) || sheet.isRowHiddenByUser(i + 1)) continue;
-
-      let email = data[i][colEmailIndex - 1];
-      if (!email || email.toString().trim() === "" || email.toString().indexOf("@") === -1) continue;
-
-      let status = data[i][statusColIndex];
-      if (status === "Đã gửi" || status === "Sent") continue;
-
-      count++;
-    }
-    return count;
+    const scan = collectEligibleRowIndicesFromData(sheet, data, colEmailIndex, statusName, options);
+    return scan.eligibleIndices.length;
   } catch (err) {
     return 0;
   }
@@ -423,17 +472,29 @@ function getScheduleManagerData() {
   const currentSpreadsheetId = ss ? ss.getId() : null;
   const currentSpreadsheetName = ss ? ss.getName() : "";
 
-  if (currentConfig) {
-    currentConfig.recipientCount = countEligibleRecipients(
-      currentConfig.sheetName,
-      currentConfig.colEmail,
-      currentConfig.statusName
-    );
+  if (currentConfig && ss) {
+    const sheet = ss.getSheetByName(currentConfig.sheetName);
+    if (sheet) {
+      const data = sheet.getDataRange().getValues();
+      const scan = collectEligibleRowIndicesFromData(
+        sheet,
+        data,
+        currentConfig.colEmail,
+        currentConfig.statusName,
+        { fastLimit: SCHEDULE_COUNT_FAST_THRESHOLD }
+      );
+      currentConfig.recipientCount = scan.eligibleIndices.length;
+      currentConfig.recipientCountApproximate = scan.approximate;
+    } else {
+      currentConfig.recipientCount = 0;
+    }
   }
 
-  let campaigns = loadCampaignsFromProperties();
-  campaigns = autoCleanExpiredCampaigns(campaigns, Date.now(), SCHEDULE_EXPIRATION_GRACE_MS);
-  saveCampaignsToProperties(campaigns);
+  const rawCampaigns = loadCampaignsFromProperties();
+  let campaigns = autoCleanExpiredCampaigns(rawCampaigns, Date.now(), SCHEDULE_EXPIRATION_GRACE_MS);
+  if (Object.keys(campaigns).length !== Object.keys(rawCampaigns).length) {
+    saveCampaignsToProperties(campaigns);
+  }
 
   // Dọn các map trigger mồ côi nếu không còn chiến dịch nào cho spreadsheet đó
   const docTriggerMap = loadDocTriggerMap();
@@ -448,9 +509,7 @@ function getScheduleManagerData() {
   }
   if (mapDirty) saveDocTriggerMap(docTriggerMap);
 
-  const activeList = Object.values(campaigns).sort(function (a, b) {
-    return new Date(a.scheduleTimeStr).getTime() - new Date(b.scheduleTimeStr).getTime();
-  });
+  const activeList = sortCampaignsByTime(campaigns);
 
   const currentDocCampaignCount = currentSpreadsheetId
     ? Object.keys(filterCampaignsForDoc(campaigns, currentSpreadsheetId)).length
@@ -467,13 +526,13 @@ function getScheduleManagerData() {
 }
 
 /**
- * Đánh dấu trạng thái "🕒 Đã lên lịch" hàng loạt trên Sheet (tìm cột trống gần nhất nếu chưa có cột Status)
+ * Đánh dấu trạng thái "🕒 Đã lên lịch" hàng loạt trên Sheet từ danh sách chỉ số hợp lệ đã quét
  */
-function markSheetRowsAsScheduled(ss, minimalConfig) {
-  const sheet = ss.getSheetByName(minimalConfig.sheetName);
+function markSheetRowsAsScheduled(ss, minimalConfig, preScannedSheet, preScannedData, preScannedIndices) {
+  const sheet = preScannedSheet || ss.getSheetByName(minimalConfig.sheetName);
   if (!sheet) return;
 
-  const data = sheet.getDataRange().getValues();
+  const data = preScannedData || sheet.getDataRange().getValues();
   const headers = data[0] || [];
   let statusColIndex = headers.indexOf(minimalConfig.statusName);
 
@@ -491,18 +550,27 @@ function markSheetRowsAsScheduled(ss, minimalConfig) {
   }
 
   if (data.length > 1) {
+    const eligibleIndices = preScannedIndices || collectEligibleRowIndicesFromData(
+      sheet,
+      data,
+      minimalConfig.colEmail,
+      minimalConfig.statusName
+    ).eligibleIndices;
+
+    if (eligibleIndices.length === 0) return;
+
     const statusRange = sheet.getRange(2, statusColIndex + 1, data.length - 1, 1);
-    const statusValues = statusRange.getValues();
-    let hasChanges = false;
-
+    const statusValues = [];
     for (let i = 1; i < data.length; i++) {
-      if (sheet.isRowHiddenByFilter(i + 1) || sheet.isRowHiddenByUser(i + 1)) continue;
+      statusValues.push([data[i][statusColIndex] !== undefined ? data[i][statusColIndex] : ""]);
+    }
 
-      let email = data[i][minimalConfig.colEmail - 1];
-      let currentStatus = statusValues[i - 1][0];
-
-      if (currentStatus !== "Đã gửi" && currentStatus !== "Sent" && email && email.toString().indexOf("@") !== -1) {
-        statusValues[i - 1][0] = "🕒 Đã lên lịch";
+    let hasChanges = false;
+    for (let k = 0; k < eligibleIndices.length; k++) {
+      const rowIdx = eligibleIndices[k];
+      const currentStatus = statusValues[rowIdx - 1][0];
+      if (currentStatus !== "Đã gửi" && currentStatus !== "Sent" && currentStatus !== "🕒 Đã lên lịch") {
+        statusValues[rowIdx - 1][0] = "🕒 Đã lên lịch";
         hasChanges = true;
       }
     }
@@ -517,10 +585,15 @@ function markSheetRowsAsScheduled(ss, minimalConfig) {
  * Thêm một chiến dịch hẹn giờ mới vào danh sách chờ cho file Sheet hiện tại
  * (cô lập Trigger theo từng file, tự rollback nếu tạo Trigger lỗi)
  */
-function createNewScheduledCampaign(scheduleTimeStr) {
+function _createScheduledCampaignInternal(scheduleTimeStr) {
   const lock = LockService.getUserLock();
   if (!lock.tryLock(10000)) {
-    return "Lỗi: Hệ thống đang xử lý một lịch hẹn khác, vui lòng thử lại sau vài giây.";
+    return {
+      success: false,
+      message: "Lỗi: Hệ thống đang xử lý một lịch hẹn khác, vui lòng thử lại sau vài giây.",
+      campaigns: null,
+      currentSpreadsheetId: null
+    };
   }
 
   let previousCampaigns = null;
@@ -528,24 +601,28 @@ function createNewScheduledCampaign(scheduleTimeStr) {
   let currentSsId = null;
 
   try {
-    if (!scheduleTimeStr) return "Lỗi: Vui lòng chọn ngày và giờ hẹn!";
+    if (!scheduleTimeStr) {
+      return { success: false, message: "Lỗi: Vui lòng chọn ngày và giờ hẹn!", campaigns: null, currentSpreadsheetId: null };
+    }
 
     const scheduleDate = new Date(scheduleTimeStr);
     const now = new Date();
 
     if (isNaN(scheduleDate.getTime())) {
-      return "Lỗi: Thời gian hẹn giờ không hợp lệ!";
+      return { success: false, message: "Lỗi: Thời gian hẹn giờ không hợp lệ!", campaigns: null, currentSpreadsheetId: null };
     }
 
     if (scheduleDate.getTime() <= now.getTime() + 120000) {
-      return "Lỗi: Thời gian hẹn giờ phải cách thời điểm hiện tại ít nhất 2 phút.";
+      return { success: false, message: "Lỗi: Thời gian hẹn giờ phải cách thời điểm hiện tại ít nhất 2 phút.", campaigns: null, currentSpreadsheetId: null };
     }
 
     let currentConfigStr = CacheService.getUserCache().get('CURRENT_CAMPAIGN_CONFIG');
     if (!currentConfigStr) {
       currentConfigStr = PropertiesService.getUserProperties().getProperty('CURRENT_CAMPAIGN_CONFIG');
     }
-    if (!currentConfigStr) return "Lỗi: Bạn cần mở Bảng Điều Khiển để setup cấu hình gửi trước khi lên lịch mới.";
+    if (!currentConfigStr) {
+      return { success: false, message: "Lỗi: Bạn cần mở Bảng Điều Khiển để setup cấu hình gửi trước khi lên lịch mới.", campaigns: null, currentSpreadsheetId: null };
+    }
 
     const rawConfig = JSON.parse(currentConfigStr);
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -579,9 +656,16 @@ function createNewScheduledCampaign(scheduleTimeStr) {
       trackingStatusColName: rawConfig.trackingStatusColName || "Tracking"
     };
 
-    const recipientCount = countEligibleRecipients(minimalConfig.sheetName, minimalConfig.colEmail, minimalConfig.statusName);
+    // Đọc Sheet và lọc dòng hợp lệ đúng 1 lần duy nhất
+    const targetSheet = ss.getSheetByName(minimalConfig.sheetName);
+    const sheetData = targetSheet ? targetSheet.getDataRange().getValues() : [];
+    const scan = targetSheet
+      ? collectEligibleRowIndicesFromData(targetSheet, sheetData, minimalConfig.colEmail, minimalConfig.statusName)
+      : { eligibleIndices: [] };
+    const recipientCount = scan.eligibleIndices.length;
+
     if (recipientCount === 0) {
-      return "Lỗi: Không tìm thấy người nhận nào hợp lệ để lên lịch!";
+      return { success: false, message: "Lỗi: Không tìm thấy người nhận nào hợp lệ để lên lịch!", campaigns: null, currentSpreadsheetId: currentSsId };
     }
 
     previousCampaigns = autoCleanExpiredCampaigns(
@@ -591,7 +675,7 @@ function createNewScheduledCampaign(scheduleTimeStr) {
     );
 
     if (hasDuplicateCampaign(previousCampaigns, currentSsId, minimalConfig.sheetName, minimalConfig.draftSubject, scheduleDate.getTime())) {
-      return "Lỗi: Chiến dịch cho bản nháp và tab Sheet này vào thời điểm đó đã có trong hàng đợi!";
+      return { success: false, message: "Lỗi: Chiến dịch cho bản nháp và tab Sheet này vào thời điểm đó đã có trong hàng đợi!", campaigns: previousCampaigns, currentSpreadsheetId: currentSsId };
     }
 
     const closeConflict = findCloseCampaignGapOnSameDoc(
@@ -601,7 +685,12 @@ function createNewScheduledCampaign(scheduleTimeStr) {
       SCHEDULE_SAME_FILE_MIN_GAP_MS
     );
     if (closeConflict) {
-      return `Lỗi: Không thể đặt 2 lịch cách nhau dưới 65 phút trên cùng 1 file Sheet (đang có lịch "${closeConflict.campaign.draftSubject}" cách ${closeConflict.diffMinutes} phút). Vui lòng chọn giờ cách ít nhất 65 phút hoặc tách sang 1 file Sheet bản sao khác!`;
+      return {
+        success: false,
+        message: `Lỗi: Không thể đặt 2 lịch cách nhau dưới 65 phút trên cùng 1 file Sheet (đang có lịch "${closeConflict.campaign.draftSubject}" cách ${closeConflict.diffMinutes} phút). Vui lòng chọn giờ cách ít nhất 65 phút hoặc tách sang 1 file Sheet bản sao khác!`,
+        campaigns: previousCampaigns,
+        currentSpreadsheetId: currentSsId
+      };
     }
 
     const campaignId = "camp_" + now.getTime() + "_" + Math.floor(Math.random() * 1000);
@@ -627,15 +716,20 @@ function createNewScheduledCampaign(scheduleTimeStr) {
       try {
         syncDocumentTrigger(currentSsId, previousCampaigns, now.getTime());
       } catch (_) {}
-      return "Lỗi lên lịch: " + triggerErr.message;
+      return { success: false, message: "Lỗi lên lịch: " + triggerErr.message, campaigns: previousCampaigns, currentSpreadsheetId: currentSsId };
     }
 
     saveCampaignsToProperties(nextCampaigns);
     savedToProperties = true;
 
-    markSheetRowsAsScheduled(ss, minimalConfig);
+    markSheetRowsAsScheduled(ss, minimalConfig, targetSheet, sheetData, scan.eligibleIndices);
 
-    return `Đã lên lịch chiến dịch thành công cho ${recipientCount} email!`;
+    return {
+      success: true,
+      message: `Đã lên lịch chiến dịch thành công cho ${recipientCount} email!`,
+      campaigns: nextCampaigns,
+      currentSpreadsheetId: currentSsId
+    };
   } catch (e) {
     if (savedToProperties && previousCampaigns !== null && currentSsId) {
       try {
@@ -643,25 +737,42 @@ function createNewScheduledCampaign(scheduleTimeStr) {
         syncDocumentTrigger(currentSsId, previousCampaigns, Date.now());
       } catch (_) {}
     }
-    return "Lỗi lên lịch: " + e.message;
+    return { success: false, message: "Lỗi lên lịch: " + e.message, campaigns: previousCampaigns, currentSpreadsheetId: currentSsId };
   } finally {
     lock.releaseLock();
   }
 }
 
+function createNewScheduledCampaign(scheduleTimeStr) {
+  return _createScheduledCampaignInternal(scheduleTimeStr).message;
+}
+
+function createScheduledCampaignWithState(scheduleTimeStr) {
+  const res = _createScheduledCampaignInternal(scheduleTimeStr);
+  const finalCampaigns = res.campaigns || loadCampaignsFromProperties();
+  return {
+    success: res.success,
+    message: res.message,
+    currentSpreadsheetId: res.currentSpreadsheetId,
+    activeCampaigns: sortCampaignsByTime(finalCampaigns)
+  };
+}
+
 /**
  * Hủy một chiến dịch cụ thể theo ID và chỉ đồng bộ lại Trigger của đúng file Sheet sở hữu chiến dịch đó
  */
-function cancelSingleCampaign(campaignId) {
+function _cancelSingleCampaignInternal(campaignId) {
   const lock = LockService.getUserLock();
   if (!lock.tryLock(10000)) {
-    return "Lỗi: Hệ thống đang bận, vui lòng thử lại sau vài giây.";
+    return { success: false, message: "Lỗi: Hệ thống đang bận, vui lòng thử lại sau vài giây.", campaigns: null };
   }
 
   try {
     let campaigns = loadCampaignsFromProperties();
     const targetCampaign = campaigns[campaignId];
-    if (!targetCampaign) return "Chiến dịch không tồn tại hoặc đã chạy xong.";
+    if (!targetCampaign) {
+      return { success: false, message: "Chiến dịch không tồn tại hoặc đã chạy xong.", campaigns: campaigns };
+    }
 
     const targetSsId = targetCampaign.config && targetCampaign.config.spreadsheetId
       ? targetCampaign.config.spreadsheetId
@@ -679,22 +790,24 @@ function cancelSingleCampaign(campaignId) {
         const sheet = ss.getSheetByName(targetCampaign.sheetName);
         if (sheet) {
           const data = sheet.getDataRange().getValues();
-          const statusColIndex = data[0].indexOf(targetCampaign.config.statusName);
+          const headers = data[0] || [];
+          const statusColIndex = headers.indexOf(targetCampaign.config.statusName);
 
           if (statusColIndex !== -1 && data.length > 1) {
-            const statusRange = sheet.getRange(2, statusColIndex + 1, data.length - 1, 1);
-            const statusValues = statusRange.getValues();
+            const statusValues = [];
             let hasChanges = false;
-
-            for (let i = 0; i < statusValues.length; i++) {
-              if (statusValues[i][0] === "🕒 Đã lên lịch") {
-                statusValues[i][0] = "";
+            for (let i = 1; i < data.length; i++) {
+              const curVal = data[i][statusColIndex] !== undefined ? data[i][statusColIndex] : "";
+              if (curVal === "🕒 Đã lên lịch") {
+                statusValues.push([""]);
                 hasChanges = true;
+              } else {
+                statusValues.push([curVal]);
               }
             }
 
             if (hasChanges) {
-              statusRange.setValues(statusValues);
+              sheet.getRange(2, statusColIndex + 1, data.length - 1, 1).setValues(statusValues);
             }
           }
         }
@@ -710,12 +823,26 @@ function cancelSingleCampaign(campaignId) {
       syncScheduleTrigger(campaigns, Date.now());
     }
 
-    return "Đã hủy chiến dịch thành công!";
+    return { success: true, message: "Đã hủy chiến dịch thành công!", campaigns: campaigns };
   } catch (e) {
-    return "Lỗi khi hủy: " + e.message;
+    return { success: false, message: "Lỗi khi hủy: " + e.message, campaigns: null };
   } finally {
     lock.releaseLock();
   }
+}
+
+function cancelSingleCampaign(campaignId) {
+  return _cancelSingleCampaignInternal(campaignId).message;
+}
+
+function cancelSingleCampaignWithState(campaignId) {
+  const res = _cancelSingleCampaignInternal(campaignId);
+  const finalCampaigns = res.campaigns || loadCampaignsFromProperties();
+  return {
+    success: res.success,
+    message: res.message,
+    activeCampaigns: sortCampaignsByTime(finalCampaigns)
+  };
 }
 
 /**
@@ -850,9 +977,12 @@ if (typeof module !== 'undefined' && module.exports) {
     cleanupTriggersForDoc,
     syncDocumentTrigger,
     syncScheduleTrigger,
+    countEligibleRecipients,
     getScheduleManagerData,
     createNewScheduledCampaign,
+    createScheduledCampaignWithState,
     cancelSingleCampaign,
+    cancelSingleCampaignWithState,
     processScheduledCampaigns,
     cleanupAllScheduleTriggers
   };
