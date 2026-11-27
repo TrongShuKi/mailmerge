@@ -163,8 +163,8 @@
     <div class="card">
       <h3 class="h3-blue">📋 1. Chuẩn Bị Bản Nháp (Draft) Trong Gmail</h3>
       <ul>
-        <li>Vào Gmail $\rightarrow$ bấm <b>Soạn thư</b> $\rightarrow$ nhập Tiêu đề và Nội dung thư mẫu.</li>
-        <li><b>Chèn thông tin cá nhân hóa:</b> Nhập các từ khóa trong dấu ngoặc kép đôi:<br>
+        <li>Vào Gmail &rarr; bấm <b>Soạn thư</b> &rarr; nhập Tiêu đề và Nội dung thư mẫu.</li>
+        <li><b>Chèn thông tin cá nhân hóa:</b> Nhập các từ khóa trong dấu ngoặc nhọn đôi:<br>
           • Danh xưng: <span class="tag">{{danhxung}}</span> hoặc <span class="tag">{{title}}</span><br>
           • Tên / Họ tên: <span class="tag">{{ten}}</span> hoặc <span class="tag">{{fullname}}</span><br>
           • Liên kết động: <span class="tag">{{link}}</span><br>
@@ -177,8 +177,10 @@
     <div class="card">
       <h3 class="h3-blue">📊 2. Chuẩn Bị Bảng Tính Google Sheets</h3>
       <ul>
+        <li><b>Đặt tên tiêu đề cột rõ ràng (hàng 1):</b> Nên đặt rõ <code>Email</code>, <code>Email test</code>, <code>CC</code> (hoặc <code>Email CC</code>), <code>BCC</code> (hoặc <code>Email BCC</code>), <code>Danh xưng</code>, <code>Họ tên</code>, <code>Link</code>, <code>Đính kèm</code> (hoặc <code>Link đính kèm</code>) để hệ thống tự nhận diện chuẩn 1-1 và không bị chồng lấn giữa các cột.</li>
         <li><b>Cột Email (Bắt buộc):</b> Chứa địa chỉ email người nhận chính.</li>
-        <li><b>Cột CC / BCC (Tùy chọn):</b> Chứa email đồng gửi. Nếu có nhiều email trong 1 ô, ngăn cách bằng dấu phẩy <code>,</code> hoặc chấm phẩy <code>;</code>.</li>
+        <li><b>Cột CC / BCC (Tùy chọn):</b> Chứa email đồng gửi. Nếu có nhiều email trong 1 ô, ngăn cách bằng dấu phẩy <code>,</code>, chấm phẩy <code>;</code> hoặc xuống dòng.</li>
+        <li><b>Cột Email test (Tùy chọn — chỉ dùng khi gửi thử):</b> Đặt tên cột <code>Email test</code> để chứa danh sách người cùng duyệt thư thử nghiệm. Bạn có thể nhập nhiều email trong cùng 1 ô hoặc trải xuống nhiều dòng trong cột (hệ thống tự bỏ qua dòng tiêu đề, dòng trống và lọc trùng). Cột này <b>tuyệt đối KHÔNG gửi kèm</b> khi bạn bấm <b>SEND EMAIL</b>, <b>PREVIEW</b> hay <b>SCHEDULE MANAGER</b>.</li>
         <li><b>Hệ thống tự động bỏ qua:</b> Các hàng bị ẩn do lọc (Filter) hoặc ẩn thủ công (Hide row) sẽ không bị gửi email.</li>
         <li><b>Chống gửi lặp:</b> Các hàng đã có trạng thái <b>"Đã gửi"</b> ở cột Status sẽ tự động được bỏ qua, không bao giờ lo gửi trùng thư!</li>
       </ul>
@@ -188,11 +190,12 @@
     <div class="card">
       <h3 class="h3-green">⚡ 3. Các Chức Năng Nổi Bật Trên Bảng Điều Khiển (Sidebar)</h3>
       <ul>
-        <li><span class="badge badge-yellow">PREVIEW</span> <b>Xem trước thư:</b> Kiểm tra giao diện email thực tế đã ghép dữ liệu của người nhận đầu tiên trước khi bấm gửi thật.</li>
-        <li><span class="badge badge-blue">SEND TEST EMAIL</span> <b>Gửi thư thử nghiệm:</b> Gửi ngay 1 email mẫu tới chính địa chỉ Gmail của bạn để kiểm tra hiển thị trên điện thoại và máy tính.</li>
-        <li><span class="badge badge-green">SEND EMAIL</span> <b>Gửi hàng loạt:</b> Tự động duyệt danh sách và gửi email. Có thanh điều chỉnh <b>Thời gian chờ (Delay time)</b> 1-2 giây giữa 2 email để bảo vệ tài khoản chống bộ lọc Spam của Google.</li>
+        <li><span class="badge badge-green">CHỌN TAB &amp; NHẬN DIỆN MÀU</span> <b>Đổi Tab Sheet trực tiếp &amp; tô màu cấu hình:</b> Cho phép chọn ngay <b>Tab Sheet xử lý</b> trong Sidebar để hệ thống tự chuyển tab và quét lại cột. Các trường đang dùng/có chọn cột hiển thị <b>nền xanh lá</b>; các trường để trống không sử dụng hiển thị <b>nền xám mờ</b> giúp kiểm tra nhanh, tránh gửi dư cột.</li>
+        <li><span class="badge badge-yellow">PREVIEW</span> <b>Xem trước thư siêu nhanh &amp; nhảy tùy ý:</b> Hệ thống tải mẫu thư một lần và tự động bỏ qua quét dòng trống, giúp mở danh sách lớn nhanh chóng. Bạn có thể <b>tìm theo tên/email/số dòng</b>, chọn nhanh từ danh sách, gõ số thứ tự bất kỳ để nhảy tới ngay hoặc dùng phím <code>&larr;</code> / <code>&rarr;</code> trên màn hình Máy tính và Điện thoại.</li>
+        <li><span class="badge badge-blue">SEND TEST EMAIL</span> <b>Gửi thư thử nghiệm:</b> Gửi ngay 1 email mẫu <code>[TEST]</code> tới Gmail của bạn. Nếu có chọn <b>Cột Email test</b>, hệ thống tự động gom tất cả email hợp lệ trong cột này để <b>CC</b> cho cả nhóm duyệt chung (vẫn giữ nguyên CC/BCC mẫu nếu đang cấu hình).</li>
+        <li><span class="badge badge-green">SEND EMAIL</span> <b>Gửi hàng loạt:</b> Tự động duyệt danh sách và gửi email. Có ô điều chỉnh <b>Thời gian chờ (Delay time)</b> 1-2 giây giữa 2 email để bảo vệ tài khoản chống bộ lọc Spam của Google.</li>
         <li><span class="badge badge-blue">📊 OPEN TRACKING</span> <b>Theo dõi mở email:</b> Bật công tắc này, hệ thống sẽ tự động chèn pixel ẩn và cập nhật thời gian <span class="tag-code">Đã xem (HH:mm dd/MM)</span> vào cột <b>Tracking</b> trên Sheet ngay khi người nhận mở thư (Tích hợp bộ lọc chống báo ảo 15s).</li>
-        <li><span class="badge badge-purple">⏰ SCHEDULE MANAGER</span> <b>Hẹn giờ gửi tự động:</b> Lên lịch gửi email vào một ngày/giờ cụ thể trong tương lai. Hệ thống kích hoạt ngầm trên máy chủ Google, bạn có thể tắt máy tính mà email vẫn gửi đúng lịch hẹn.</li>
+        <li><span class="badge badge-purple">⏰ SCHEDULE MANAGER</span> <b>Hẹn giờ gửi tự động:</b> Lên lịch gửi độc lập cho nhiều file Sheet khác nhau; bạn có thể tắt máy tính mà email vẫn gửi đúng lịch. Nếu mở từ menu <i>MailMerge &rarr; ⏰ Schedule Manager</i> bên ngoài Sidebar sẽ vào chế độ <b>chỉ xem/hủy lịch</b>. Trên <b>cùng 1 file Sheet</b>, hai lịch hẹn bắt buộc cách nhau ít nhất <b>65 phút</b> (nếu cần gửi sát giờ hơn, hãy tách sang file Sheet khác).</li>
       </ul>
     </div>
 
@@ -209,7 +212,7 @@
     <div class="card">
       <h3 class="h3-orange">🔗 5. Chèn Hyperlink Cá Nhân Hóa (Liên Kết Web)</h3>
       <ul>
-        <li><b>Cách 1 (Chữ cố định, link thay đổi):</b> Bôi đen cụm từ trong bản nháp Gmail (VD: <i>"Bấm vào đây"</i>) $\rightarrow$ bấm <code>Ctrl + K</code> $\rightarrow$ tại ô URL dán <span class="tag">{{link}}</span>.</li>
+        <li><b>Cách 1 (Chữ cố định, link thay đổi):</b> Bôi đen cụm từ trong bản nháp Gmail (VD: <i>"Bấm vào đây"</i>) &rarr; bấm <code>Ctrl + K</code> &rarr; tại ô URL dán <span class="tag">{{link}}</span>.</li>
         <li><b>Cách 2 (Đổi cả chữ lẫn link theo từng người nhận):</b><br>
           Trên Sheet dùng công thức ghép HTML:<br>
           <div style="background-color: #f1f3f4; padding: 6px 10px; border-radius: 4px; font-family: monospace; font-size: 11px; margin: 4px 0;">

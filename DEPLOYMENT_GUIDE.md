@@ -11,11 +11,11 @@
 # 1. Kiểm tra tag phiên bản hiện tại
 git describe --tags --abbrev=0
 
-# 2. Cập nhật APP_VERSION trong src/MailMergePro.js & chạy test
+# 2. Cập nhật APP_VERSION trong src/MailMergePro.js & version trong package.json, rồi chạy test
 npm test
 
 # 3. Đóng gói & Đẩy code lên GitHub
-git add src/MailMergePro.js package.json
+git add .
 git commit -m "chore(release): bump version to vX.Y.Z"
 git push origin main
 
@@ -37,14 +37,15 @@ git describe --tags --abbrev=0
 
 ---
 
-### Bước 2: Cập nhật số phiên bản trong mã nguồn (DUY NHẤT 1 NƠI)
-Hệ thống đã được tối ưu hóa toàn cục, bạn **chỉ cần sửa đúng 1 dòng duy nhất**:
+### Bước 2: Cập nhật số phiên bản trong mã nguồn
+Cập nhật đồng bộ số phiên bản mới tại 2 nơi:
 
 * **`src/MailMergePro.js`** (Dòng 5):
   ```javascript
-  const APP_VERSION = "1.1.3";
+  const APP_VERSION = "1.1.8";
   ```
-  *(Chân trang `Sidebar.html` đã được cấu hình tự động đọc động từ `APP_VERSION` khi mở bảng điều khiển, bạn KHÔNG CẦN sửa tay file HTML nữa!)*
+* **`package.json`**: trường `"version": "1.1.8"` (và badge trong `README.md` nếu cần).
+  *(Chân trang `Sidebar.html` tự động đọc động từ `APP_VERSION` khi mở bảng điều khiển, bạn KHÔNG CẦN sửa tay `Sidebar.html`.)*
 
 ---
 
@@ -87,7 +88,15 @@ Khi nhận được sự kiện đẩy Tag (`v*`), file cấu hình `.github/wor
    * **Secret `DEPLOYMENT_ID_ADDON`:** Deployment ID của Add-on Google Sheets (lấy trong Manage deployments).
    * **Secret `DEPLOYMENT_ID_TRACKING`:** Deployment ID của Open Tracking Web App (lấy trong Manage deployments).
    *(Bảo mật 100%, không bị lộ ID công khai trên kho lưu trữ mã nguồn).*
-4. Người dùng mở Google Sheets lên sẽ nhận phiên bản mới ngay lập tức mà **không cần vào Apps Script bấm chuột thủ công**.
+4. Người dùng mở Google Sheets lên sẽ nhận phiên bản mới ngay lập tức (nếu là Add-on xuất bản qua Marketplace SDK, xem thêm **Bước 6** để trỏ GCP về Script Version mới nhất).
+
+---
+
+### Bước 6: Cập nhật Script Version trên GCP (nếu phát hành qua Marketplace SDK)
+Sau khi GitHub Actions deploy xong, chạy `npx clasp deployments` để lấy số `@<version>` của dòng `Release vX.Y.Z (Add-on)` rồi:
+1. Vào **Google Cloud Platform** $\rightarrow$ **Google Workspace Marketplace SDK** $\rightarrow$ **App Configuration**.
+2. Tại mục **Sheets Add-on** $\rightarrow$ **Script Version**, nhập số version vừa deploy (ví dụ `25`) và bấm **Save**.
+*(Lưu ý: deployment **Open Tracking Web App** tự chạy bản mới ngay qua URL cố định, không cần cập nhật lại trên GCP.)*
 
 ---
 

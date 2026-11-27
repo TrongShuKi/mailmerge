@@ -331,7 +331,7 @@
       <select id="colEmail" class="col-select"></select>
     </div>
 
-    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+    <div style="display: flex; gap: 10px; margin-bottom: 12px;">
       <div class="form-group" style="flex: 1; margin-bottom: 0;">
         <label>Cột CC:</label>
         <select id="colCc" class="col-select"></select>
@@ -340,6 +340,12 @@
         <label>Cột BCC:</label>
         <select id="colBcc" class="col-select"></select>
       </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom: 15px;">
+      <label>Cột Email test (CC khi gửi thử):</label>
+      <select id="colTestEmail" class="col-select"></select>
+      <span class="syntax-note">Gom các email trong cột này để CC khi bấm SEND TEST EMAIL</span>
     </div>
 
     <div style="border-top: 1px solid #ddd; padding-top: 10px; margin-top: 10px;">
@@ -474,7 +480,7 @@
 
     const TRACKED_FIELD_IDS = [
       'draftSubject', 'senderName', 'sheetName',
-      'colEmail', 'colCc', 'colBcc',
+      'colEmail', 'colTestEmail', 'colCc', 'colBcc',
       'colTitle', 'colName', 'colLink', 'colAttachment',
       'colOther1', 'colOther2', 'colOther3', 'colOther4',
       'colOther5', 'colOther6', 'colOther7', 'colOther8'
@@ -550,6 +556,7 @@
       currentColumnsList = (sheetData && sheetData.columnsList) || [];
 
       populateSelect('colEmail', currentColumnsList, sheetData.colEmail, true);
+      populateSelect('colTestEmail', currentColumnsList, sheetData.colTestEmail, false);
       populateSelect('colCc', currentColumnsList, sheetData.colCc, false);
       populateSelect('colBcc', currentColumnsList, sheetData.colBcc, false);
       populateSelect('colTitle', currentColumnsList, sheetData.colTitle, false);
@@ -662,6 +669,7 @@
         sheetName: document.getElementById('sheetName').value,
 
         colEmail: letterToNumber(document.getElementById('colEmail').value),
+        colTestEmail: letterToNumber(document.getElementById('colTestEmail').value),
         colCc: letterToNumber(document.getElementById('colCc').value),
         colBcc: letterToNumber(document.getElementById('colBcc').value),
 

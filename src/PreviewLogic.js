@@ -1,7 +1,183 @@
 // ============================================================================
 // DỰ ÁN: GOOGLE SHEETS MAIL MERGE PRO
-// TỆP: PreviewLogic.gs - XỬ LÝ XEM TRƯỚC (CHUNKING CACHE & KHÔNG TRÀN BỘ NHỚ)
+// TỆP: PreviewLogic.js - XỬ LÝ XEM TRƯỚC TỐC ĐỘ CAO (CLIENT-SIDE RENDER & CACHE)
 // ============================================================================
+
+const PREVIEW_UPFRONT_HIDDEN_CHECK_LIMIT = 150;
+
+function formatPreviewCellText(val) {
+  if (val === null || val === undefined || val === "") return "";
+  if (val instanceof Date) return val.toString();
+  return String(val);
+}
+
+function countValidDriveAttachmentLinks(cellValue) {
+  if (!cellValue) return 0;
+  const str = String(cellValue).trim();
+  if (!str) return 0;
+  const links = str.split(/[,;\n]+/);
+  let validLinks = 0;
+  for (let k = 0; k < links.length; k++) {
+    const part = links[k].trim();
+    if (part !== "" && /[-\w]{25,}/.test(part)) {
+      validLinks++;
+    }
+  }
+  return validLinks;
+}
+
+function escapePreviewHtmlText(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function extractPreviewRowRecord(row, dataIndex, config) {
+  const rec = {
+    idx: dataIndex,
+    r: dataIndex + 1,
+    to: formatPreviewCellText(row[config.colEmail - 1]).trim()
+  };
+
+  if (config.colTitle > 0) {
+    const t = formatPreviewCellText(row[config.colTitle - 1]);
+    if (t) rec.t = t;
+  }
+  if (config.colName > 0) {
+    const n = formatPreviewCellText(row[config.colName - 1]);
+    if (n) rec.n = n;
+  }
+  if (config.colLink > 0) {
+    const l = formatPreviewCellText(row[config.colLink - 1]);
+    if (l) rec.l = l;
+  }
+  if (config.colAttachment > 0) {
+    const attCount = countValidDriveAttachmentLinks(row[config.colAttachment - 1]);
+    if (attCount > 0) rec.a = attCount;
+  }
+  if (config.colCc > 0) {
+    const rawCc = formatPreviewCellText(row[config.colCc - 1]).trim();
+    if (rawCc) rec.cc = rawCc.replace(/[;\n]+/g, ', ');
+  }
+  if (config.colBcc > 0) {
+    const rawBcc = formatPreviewCellText(row[config.colBcc - 1]).trim();
+    if (rawBcc) rec.bcc = rawBcc.replace(/[;\n]+/g, ', ');
+  }
+
+  let others = null;
+  for (let j = 1; j <= 8; j++) {
+    const colIdx = config["colOther" + j];
+    if (colIdx > 0) {
+      const val = formatPreviewCellText(row[colIdx - 1]);
+      if (val) {
+        if (!others) others = {};
+        others[j] = val;
+      }
+    }
+  }
+  if (others) rec.o = others;
+
+  return rec;
+}
+
+function extractEligiblePreviewRows(sheet, data, config) {
+  if (!Array.isArray(data) || data.length <= 1) {
+    return { validIndices: [], rows: [], hiddenCheckDeferred: false };
+  }
+
+  const headers = data[0] || [];
+  const statusColIndex = headers.indexOf(config.statusName || "Status");
+  const emailIdx = config.colEmail - 1;
+  const ramCandidates = [];
+
+  // Bước 1: Lọc trên RAM trước để bỏ qua tức thì dòng trống / sai email / đã gửi (0 RPC call)
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (!row) continue;
+
+    const rawEmail = row[emailIdx];
+    if (rawEmail === null || rawEmail === undefined || rawEmail === "") continue;
+    const emailStr = String(rawEmail).trim();
+    if (!emailStr || emailStr.indexOf("@") === -1) continue;
+
+    if (statusColIndex !== -1) {
+      const status = row[statusColIndex] ? String(row[statusColIndex]).trim() : "";
+      if (status === "Đã gửi" || status === "Sent") continue;
+    }
+
+    ramCandidates.push(i);
+  }
+
+  let hiddenCheckDeferred = false;
+  let eligibleIndices = [];
+
+  // Bước 2: Với danh sách <= ngưỡng an toàn thì kiểm tra ẩn dòng; danh sách lớn tải nhanh không treo modal
+  if (ramCandidates.length <= PREVIEW_UPFRONT_HIDDEN_CHECK_LIMIT && sheet) {
+    const hasFilter = typeof sheet.getFilter === "function" ? !!sheet.getFilter() : true;
+    const canCheckFilter = hasFilter && typeof sheet.isRowHiddenByFilter === "function";
+    const canCheckUser = typeof sheet.isRowHiddenByUser === "function";
+
+    for (let k = 0; k < ramCandidates.length; k++) {
+      const rowIdx = ramCandidates[k];
+      if (canCheckFilter && sheet.isRowHiddenByFilter(rowIdx + 1)) continue;
+      if (canCheckUser && sheet.isRowHiddenByUser(rowIdx + 1)) continue;
+      eligibleIndices.push(rowIdx);
+    }
+  } else {
+    hiddenCheckDeferred = ramCandidates.length > PREVIEW_UPFRONT_HIDDEN_CHECK_LIMIT;
+    eligibleIndices = ramCandidates;
+  }
+
+  const rows = [];
+  for (let m = 0; m < eligibleIndices.length; m++) {
+    const rowIdx = eligibleIndices[m];
+    rows.push(extractPreviewRowRecord(data[rowIdx], rowIdx, config));
+  }
+
+  return {
+    validIndices: eligibleIndices,
+    rows: rows,
+    hiddenCheckDeferred: hiddenCheckDeferred
+  };
+}
+
+function applyPreviewMergeTags(htmlTemplate, rec) {
+  let personalizedHtml = htmlTemplate || "";
+
+  const replaceTagList = function (tags, rawVal, isLink) {
+    const value = formatPreviewCellText(rawVal);
+    for (let i = 0; i < tags.length; i++) {
+      const tag = tags[i];
+      if (isLink) {
+        const linkRegex = new RegExp("https?://(?:\\{\\{|%7B%7B)" + tag + "(?:\\}\\}|%7D%7D)", "gi");
+        personalizedHtml = personalizedHtml.replace(linkRegex, function () { return value; });
+      }
+      const regex = new RegExp("(?:\\{\\{|%7B%7B)" + tag + "(?:\\}\\}|%7D%7D)", "gi");
+      personalizedHtml = personalizedHtml.replace(regex, function () { return value; });
+    }
+  };
+
+  if (rec.t !== undefined) {
+    replaceTagList(["danhxung", "danh xưng", "chucdanh", "chức danh", "xungho", "xưng hô", "title"], rec.t, false);
+  }
+  if (rec.n !== undefined) {
+    replaceTagList(["ten", "tên", "hoten", "họ tên", "ho va ten", "họ và tên", "nguoinhan", "người nhận", "name", "fullname"], rec.n, false);
+  }
+  if (rec.l !== undefined) {
+    replaceTagList(["link", "liên kết", "url", "đường dẫn"], rec.l, true);
+  }
+  if (rec.o) {
+    for (let j = 1; j <= 8; j++) {
+      if (rec.o[j] !== undefined) {
+        replaceTagList(["other" + j], rec.o[j], false);
+      }
+    }
+  }
+
+  return personalizedHtml;
+}
 
 /**
  * Mở hộp thoại xem trước (Tự động dọn rác cũ và lưu cấu hình an toàn)
@@ -19,8 +195,8 @@ function openPreviewDialog(config) {
 
     // 3. Mở giao diện Modal
     const html = HtmlService.createHtmlOutputFromFile('Preview')
-      .setWidth(900)
-      .setHeight(650);
+      .setWidth(940)
+      .setHeight(680);
     SpreadsheetApp.getUi().showModalDialog(html, '🔎 Xem trước Email');
   } catch (e) {
     throw new Error("Lỗi khi mở giao diện xem trước: " + e.message);
@@ -28,17 +204,9 @@ function openPreviewDialog(config) {
 }
 
 /**
- * HÀM KHỞI TẠO XEM TRƯỚC
- * Quét bản nháp, nhúng ảnh Base64 và phân mảnh lưu vào CacheService
+ * Đọc bản nháp Gmail và chuyển toàn bộ ảnh nội tuyến sang Base64 một lần duy nhất
  */
-function getPreviewInitialization() {
-  const cache = CacheService.getUserCache();
-  const configStr = cache.get('PREVIEW_CONFIG');
-  if (!configStr) {
-    throw new Error("Phiên xem trước đã hết hạn. Vui lòng đóng cửa sổ và bấm PREVIEW lại.");
-  }
-  const config = JSON.parse(configStr);
-
+function buildPreviewDraftBundle(config) {
   const drafts = GmailApp.getDrafts();
   let templateMessage = null;
   for (let i = 0; i < drafts.length; i++) {
@@ -52,18 +220,15 @@ function getPreviewInitialization() {
   }
 
   let htmlTemplate = templateMessage.getBody();
-
-  // 1. Trích xuất CC/BCC và tệp đính kèm từ Draft
   const draftCc = templateMessage.getCc() || "";
   const draftBcc = templateMessage.getBcc() || "";
   const draftAttachments = templateMessage.getAttachments({ includeInlineImages: false, includeAttachments: true });
-  
+
   let draftAttNames = [];
   if (draftAttachments.length > 0) {
-    draftAttNames = draftAttachments.map(att => "📎 " + att.getName() + " <i>(Từ Nháp)</i>");
+    draftAttNames = draftAttachments.map(att => "📎 " + escapePreviewHtmlText(att.getName()) + " <i>(Từ Nháp)</i>");
   }
 
-  // 2. Xử lý ảnh nhúng (Inline Images) sang Base64 để hiển thị xem trước
   const inlineAtts = templateMessage.getAttachments({ includeInlineImages: true, includeAttachments: false });
   if (inlineAtts.length > 0) {
     const inlineImages = {};
@@ -104,135 +269,102 @@ function getPreviewInitialization() {
     }
   }
 
-  // 3. LƯU VÀO BỘ NHỚ ĐỆM BẰNG PHƯƠNG PHÁP PHÂN MẢNH (CHUNKING)
-  // htmlTemplate chứa Base64 có thể nặng hàng trăm KB, lưu qua setBigCache an toàn 100%
-  setBigCache('PREVIEW_HTML_CACHE', htmlTemplate, 900);
-  
-  cache.put('PREVIEW_META_CACHE', JSON.stringify({
-    cc: draftCc,
-    bcc: draftBcc,
-    attNames: draftAttNames
-  }), 900);
-
-  // 4. Lọc các dòng hợp lệ từ Google Sheets
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(config.sheetName);
-  if (!sheet) throw new Error("Không tìm thấy Sheet: " + config.sheetName);
-
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  let statusColIndex = headers.indexOf(config.statusName || "Status");
-  if (statusColIndex === -1) statusColIndex = headers.length;
-
-  let validIndices = [];
-  for (let i = 1; i < data.length; i++) {
-    if (sheet.isRowHiddenByFilter(i + 1) || sheet.isRowHiddenByUser(i + 1)) continue;
-    let email = data[i][config.colEmail - 1];
-    if (!email || email.toString().trim() === "" || email.toString().indexOf("@") === -1) continue;
-    
-    let status = data[i][statusColIndex];
-    if (status === "Đã gửi" || status === "Sent") continue;
-
-    validIndices.push(i);
-  }
+  const activeEmail = Session.getActiveUser().getEmail();
+  const fromLabel = config.senderName ? `${config.senderName} <${activeEmail}>` : activeEmail;
 
   return {
-    validIndices: validIndices,
-    config: config
+    htmlTemplate: htmlTemplate,
+    draftCc: draftCc,
+    draftBcc: draftBcc,
+    draftAttNames: draftAttNames,
+    fromLabel: fromLabel
   };
 }
 
 /**
- * HÀM RENDER TỪNG DÒNG (Tốc độ phản hồi tức thì từ RAM)
+ * HÀM KHỞI TẠO XEM TRƯỚC
+ * Quét bản nháp + dữ liệu gọn nhẹ 1 lần để Client chuyển/nhảy tới mọi người nhận tức thì (< 5ms)
+ */
+function getPreviewInitialization() {
+  const cache = CacheService.getUserCache();
+  const configStr = cache.get('PREVIEW_CONFIG');
+  if (!configStr) {
+    throw new Error("Phiên xem trước đã hết hạn. Vui lòng đóng cửa sổ và bấm PREVIEW lại.");
+  }
+  const config = JSON.parse(configStr);
+  const draftBundle = buildPreviewDraftBundle(config);
+
+  // Vẫn duy trì cache phân mảnh làm dự phòng cho getSinglePreviewHtml
+  try {
+    setBigCache('PREVIEW_HTML_CACHE', draftBundle.htmlTemplate, 900);
+    cache.put('PREVIEW_META_CACHE', JSON.stringify({
+      cc: draftBundle.draftCc,
+      bcc: draftBundle.draftBcc,
+      attNames: draftBundle.draftAttNames
+    }), 900);
+  } catch (_) {}
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(config.sheetName);
+  if (!sheet) throw new Error("Không tìm thấy Sheet: " + config.sheetName);
+
+  const data = sheet.getDataRange().getValues();
+  const extracted = extractEligiblePreviewRows(sheet, data, config);
+
+  return {
+    validIndices: extracted.validIndices,
+    rows: extracted.rows,
+    hiddenCheckDeferred: extracted.hiddenCheckDeferred,
+    hiddenCheckLimit: PREVIEW_UPFRONT_HIDDEN_CHECK_LIMIT,
+    config: config,
+    template: {
+      from: draftBundle.fromLabel,
+      subject: config.draftSubject || "",
+      htmlTemplate: draftBundle.htmlTemplate,
+      cc: draftBundle.draftCc,
+      bcc: draftBundle.draftBcc,
+      attNames: draftBundle.draftAttNames
+    }
+  };
+}
+
+/**
+ * HÀM RENDER TỪNG DÒNG (Giữ tương thích nếu gọi đơn lẻ từ Server)
  */
 function getSinglePreviewHtml(rowIndex, config) {
   const cache = CacheService.getUserCache();
-  
-  // 1. Tái hợp chuỗi HTML từ các mảnh cache
+
   let htmlTemplate = getBigCache('PREVIEW_HTML_CACHE');
   let metaStr = cache.get('PREVIEW_META_CACHE');
 
   if (!htmlTemplate || !metaStr) {
     throw new Error("Phiên làm việc xem trước đã hết hạn. Vui lòng đóng cửa sổ và bấm PREVIEW lại.");
   }
-  
+
   let draftMeta = JSON.parse(metaStr);
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(config.sheetName);
   const data = sheet.getDataRange().getValues();
-  let row = data[rowIndex];
-
-  let personalizedHtml = htmlTemplate;
-  let mappingFields = [];
-
-  const titleTags = ["danhxung", "danh xưng", "chucdanh", "chức danh", "xungho", "xưng hô", "title"];
-  titleTags.forEach(tag => mappingFields.push({ tag: tag, colIndex: config.colTitle }));
-
-  const nameTags = ["ten", "tên", "hoten", "họ tên", "ho va ten", "họ và tên", "nguoinhan", "người nhận", "name", "fullname"];
-  nameTags.forEach(tag => mappingFields.push({ tag: tag, colIndex: config.colName }));
-
-  const linkTags = ["link", "liên kết", "url", "đường dẫn"];
-  linkTags.forEach(tag => mappingFields.push({ tag: tag, colIndex: config.colLink }));
-
-  for (let j = 1; j <= 8; j++) {
-    mappingFields.push({ tag: "other" + j, colIndex: config["colOther" + j] });
+  const row = data[rowIndex];
+  if (!row) {
+    throw new Error("Không tìm thấy dữ liệu ở dòng: " + (rowIndex + 1));
   }
 
-  mappingFields.forEach(field => {
-    if (field.colIndex > 0) {
-      let value = row[field.colIndex - 1] || "";
-      if (linkTags.includes(field.tag)) {
-        let linkRegex = new RegExp("https?://(?:\\{\\{|%7B%7B)" + field.tag + "(?:\\}\\}|%7D%7D)", "gi");
-        personalizedHtml = personalizedHtml.replace(linkRegex, value);
-      }
-      let regex = new RegExp("(?:\\{\\{|%7B%7B)" + field.tag + "(?:\\}\\}|%7D%7D)", "gi"); 
-      personalizedHtml = personalizedHtml.replace(regex, value);
-    }
-  });
+  const rec = extractPreviewRowRecord(row, rowIndex, config);
+  const personalizedHtml = applyPreviewMergeTags(htmlTemplate, rec);
 
-  let activeEmail = Session.getActiveUser().getEmail();
-  let fromLabel = config.senderName ? `${config.senderName} <${activeEmail}>` : activeEmail;
-  let to = row[config.colEmail - 1];
+  const activeEmail = Session.getActiveUser().getEmail();
+  const fromLabel = config.senderName ? `${config.senderName} <${activeEmail}>` : activeEmail;
 
-  // Gộp CC
-  let finalCc = draftMeta.cc; 
-  if (config.colCc > 0) {
-    let sheetCc = row[config.colCc - 1];
-    if (sheetCc && sheetCc.toString().trim() !== "") {
-      let formattedSheetCc = sheetCc.toString().trim().replace(/[;\n]+/g, ', ');
-      finalCc = finalCc ? (finalCc + ", " + formattedSheetCc) : formattedSheetCc;
-    }
-  }
-  
-  // Gộp BCC
-  let finalBcc = draftMeta.bcc; 
-  if (config.colBcc > 0) {
-    let sheetBcc = row[config.colBcc - 1];
-    if (sheetBcc && sheetBcc.toString().trim() !== "") {
-      let formattedSheetBcc = sheetBcc.toString().trim().replace(/[;\n]+/g, ', ');
-      finalBcc = finalBcc ? (finalBcc + ", " + formattedSheetBcc) : formattedSheetBcc;
-    }
-  }
-  
-  // Gộp danh sách tệp đính kèm
-  let attachmentNames = [...draftMeta.attNames];
-  if (config.colAttachment > 0) {
-    let cellValue = row[config.colAttachment - 1] || "";
-    if (cellValue.toString().trim() !== "") {
-      let links = cellValue.toString().split(/[,;\n]+/);
-      let validLinks = 0;
-      for (let k = 0; k < links.length; k++) {
-        if (links[k].trim() !== "" && links[k].match(/[-\w]{25,}/)) {
-          validLinks++;
-        }
-      }
-      if (validLinks > 0) {
-        attachmentNames.push(`📎 Đính kèm thêm ${validLinks} tệp từ Drive <i>(Sheet)</i>`);
-      }
-    }
+  const finalCc = [draftMeta.cc, rec.cc].filter(Boolean).join(", ");
+  const finalBcc = [draftMeta.bcc, rec.bcc].filter(Boolean).join(", ");
+
+  const attachmentNames = [...draftMeta.attNames];
+  if (rec.a > 0) {
+    attachmentNames.push(`📎 Đính kèm thêm ${rec.a} tệp từ Drive <i>(Sheet)</i>`);
   }
 
   return {
     from: fromLabel,
-    to: to,
+    to: rec.to,
     cc: finalCc,
     bcc: finalBcc,
     subject: config.draftSubject,
@@ -285,4 +417,20 @@ function getBigCache(key) {
   }
 
   return completeString;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    PREVIEW_UPFRONT_HIDDEN_CHECK_LIMIT,
+    formatPreviewCellText,
+    countValidDriveAttachmentLinks,
+    extractPreviewRowRecord,
+    extractEligiblePreviewRows,
+    applyPreviewMergeTags,
+    openPreviewDialog,
+    getPreviewInitialization,
+    getSinglePreviewHtml,
+    setBigCache,
+    getBigCache
+  };
 }

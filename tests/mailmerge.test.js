@@ -1131,13 +1131,13 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
       expect(minimalRes.colAttachment).toBe('');
     });
 
-    test('getAutoConfig trả về appVersion 1.1.8, danh sách sheetNames và cột của tab đang active', () => {
+    test('getAutoConfig trả về appVersion 1.1.9, danh sách sheetNames và cột của tab đang active', () => {
       const tab1 = createMockSheet('Tab_1', ['Họ tên', 'Email', 'CC', 'Đính kèm']);
       const tab2 = createMockSheet('Tab_2', ['STT', 'Họ tên', 'Trạng thái', 'Email']);
       installMockEnvironment([tab1, tab2], 0);
 
       const cfg = mailMergePro.getAutoConfig();
-      expect(cfg.appVersion).toBe('1.1.8');
+      expect(cfg.appVersion).toBe('1.1.9');
       expect(cfg.sheetNames).toEqual(['Tab_1', 'Tab_2']);
       expect(cfg.sheetName).toBe('Tab_1');
       expect(cfg.colName).toBe('A');
@@ -1177,6 +1177,459 @@ describe('HỆ THỐNG KIỂM THỬ MAILMERGE PRO', () => {
       expect(() => mailMergePro.getConfigForSheet('KhongTonTai')).toThrow(
         'Không tìm thấy Tab Sheet: KhongTonTai'
       );
+    });
+  });
+
+  // =========================================================================
+  // 11. Kiểm tra Email Test, Chống Chồng Lấn Dictionary & Gom CC Test Nhanh
+  // =========================================================================
+  describe('11. Email Test Field, Non-Overlapping Column Detection & Fast Blank-Row CC', () => {
+    const mailMergePro = require('../src/MailMergePro.js');
+    let origSpreadsheetApp;
+    let origGmailApp;
+    let origSession;
+    let origUtilities;
+
+    beforeEach(() => {
+      origSpreadsheetApp = global.SpreadsheetApp;
+      origGmailApp = global.GmailApp;
+      origSession = global.Session;
+      origUtilities = global.Utilities;
+    });
+
+    afterEach(() => {
+      global.SpreadsheetApp = origSpreadsheetApp;
+      global.GmailApp = origGmailApp;
+      global.Session = origSession;
+      global.Utilities = origUtilities;
+    });
+
+    test('Nhận diện đúng cột Email test và tách bạch các cặp tiêu đề dễ chồng lấn (1 cột tối đa 1 trường)', () => {
+      const standard = mailMergePro.detectColumnMappingsFromHeaders([
+        'Danh xưng', 'Họ tên', 'Email', 'Email test', 'Email CC', 'Email BCC', 'Link', 'Link đính kèm'
+      ]);
+      expect(standard.colTitle).toBe('A');
+      expect(standard.colName).toBe('B');
+      expect(standard.colEmail).toBe('C');
+      expect(standard.colTestEmail).toBe('D');
+      expect(standard.colCc).toBe('E');
+      expect(standard.colBcc).toBe('F');
+      expect(standard.colLink).toBe('G');
+      expect(standard.colAttachment).toBe('H');
+
+      // Chỉ có cột Email test (không có Email chính): tuyệt đối không gán nhầm Email test vào colEmail
+      const testOnly = mailMergePro.detectColumnMappingsFromHeaders(['Họ tên', 'Email test']);
+      expect(testOnly.colName).toBe('A');
+      expect(testOnly.colTestEmail).toBe('B');
+      expect(testOnly.colEmail).toBe('');
+
+      // Kiểm tra các tiêu đề nhiễu dễ dính substring cũ ("ten" trong Content, "cc" trong Account, Tên công ty, Link file...)
+      const noisy = mailMergePro.detectColumnMappingsFromHeaders([
+        'Content', 'Account', 'Email người nhận', 'Email Status',
+        'Tracking', 'Tên công ty', 'Tên file', 'Họ và tên',
+        'Link Zoom', 'Link file'
+      ]);
+      expect(noisy.colEmail).toBe('C');
+      expect(noisy.colName).toBe('H');
+      expect(noisy.colLink).toBe('I');
+      expect(noisy.colAttachment).toBe('J');
+      expect(noisy.colCc).toBe('');
+      expect(noisy.colBcc).toBe('');
+      expect(noisy.colTitle).toBe('');
+      expect(noisy.colTestEmail).toBe('');
+
+      // Đảm bảo không có 2 trường nào dùng chung cùng 1 chữ cái cột
+      const assignedLetters = [
+        noisy.colTitle, noisy.colName, noisy.colEmail, noisy.colTestEmail,
+        noisy.colCc, noisy.colBcc, noisy.colLink, noisy.colAttachment
+      ].filter(Boolean);
+      expect(new Set(assignedLetters).size).toBe(assignedLetters.length);
+    });
+
+    test('collectTestEmailAddresses gom nhiều email/ô trên mọi dòng (trừ dòng tiêu đề), lọc trùng và bỏ qua nhanh hàng nghìn dòng trống', () => {
+      const data = [
+        ['Họ tên', 'Email', 'Email test'], // Row 1: header (bỏ qua)
+        ['An', 'an@real.com', 'qa1@vh.org, qa2@vh.org\nMentor <qa3@vh.org>'],
+        ['Bình', 'binh@real.com', ''],
+        ['Chi', 'chi@real.com', 'qa2@vh.org; invalid-email; mailer@vh.org'],
+        ['Dũng', 'dung@real.com', 'qa4@vh.org qa5@vh.org'],
+        ['Ẩn', 'hidden@real.com', 'hidden-qa@vh.org']
+      ];
+      // Thêm 2.000 dòng trống ở cuối file
+      for (let r = 0; r < 2000; r++) {
+        data.push(['', '', '']);
+      }
+
+      const mockSheet = {
+        isRowHiddenByFilter: jest.fn((rowNum) => rowNum === 6), // chỉ Row 6 ('Ẩn') bị ẩn
+        isRowHiddenByUser: jest.fn(() => false)
+      };
+
+      const emails = mailMergePro.collectTestEmailAddresses(mockSheet, data, 3, ['mailer@vh.org']);
+      expect(emails).toEqual([
+        'qa1@vh.org',
+        'qa2@vh.org',
+        'qa3@vh.org',
+        'qa4@vh.org',
+        'qa5@vh.org'
+      ]);
+      // Chỉ kiểm tra ẩn/hiện cho đúng 4 dòng thực sự chứa '@' (dòng 2, 4, 5, 6), không gọi API cho 2000+ dòng trống!
+      expect(mockSheet.isRowHiddenByFilter).toHaveBeenCalledTimes(4);
+      expect(mockSheet.isRowHiddenByUser).toHaveBeenCalledTimes(3); // Row 6 đã dừng ở filter
+    });
+
+    test('sendTestEmail gửi To tới tài khoản hiện tại và CC gộp toàn bộ email hợp lệ trong cột Email test (không trùng lặp)', () => {
+      const data = [
+        ['Họ tên', 'Email', 'CC', 'Email test'],
+        ['', '', '', ''], // dòng trống đầu
+        ['Minh', 'minh@real.com', 'lead@vh.org', 'qa1@vh.org, qa2@vh.org'],
+        ['', '', '', 'qa2@vh.org; qa3@vh.org'],
+        ['', '', '', '']
+      ];
+      for (let r = 0; r < 500; r++) {
+        data.push(['', '', '', '']);
+      }
+
+      const mockSheet = {
+        getName: () => 'TestTab',
+        getDataRange: () => ({ getValues: () => data }),
+        isRowHiddenByFilter: jest.fn(() => false),
+        isRowHiddenByUser: jest.fn(() => false)
+      };
+      const sendEmailMock = jest.fn();
+
+      global.SpreadsheetApp = {
+        getActiveSpreadsheet: () => ({
+          getSheetByName: (name) => (name === 'TestTab' ? mockSheet : null)
+        })
+      };
+      global.Session = {
+        getActiveUser: () => ({ getEmail: () => 'sender@vh.org' })
+      };
+      global.GmailApp = {
+        getDrafts: () => [
+          {
+            getMessage: () => ({
+              getSubject: () => 'Thư mời {{ten}}',
+              getBody: () => '<p>Xin chào {{ten}}</p>',
+              getCc: () => 'draftcc@vh.org',
+              getBcc: () => '',
+              getAttachments: () => []
+            })
+          }
+        ],
+        sendEmail: sendEmailMock
+      };
+
+      const msg = mailMergePro.sendTestEmail({
+        sheetName: 'TestTab',
+        draftSubject: 'Thư mời {{ten}}',
+        senderName: 'VietHope Team',
+        colEmail: 2,
+        colCc: 3,
+        colTestEmail: 4,
+        colName: 1
+      });
+
+      expect(sendEmailMock).toHaveBeenCalledTimes(1);
+      const [toArg, subjArg, , optsArg] = sendEmailMock.mock.calls[0];
+      expect(toArg).toBe('sender@vh.org');
+      expect(subjArg).toBe('[TEST] Thư mời {{ten}}');
+      expect(optsArg.htmlBody).toBe('<p>Xin chào Minh</p>');
+      expect(optsArg.cc).toBe('draftcc@vh.org,lead@vh.org,qa1@vh.org,qa2@vh.org,qa3@vh.org');
+      expect(msg).toContain('thành công');
+      expect(msg).toContain('qa1@vh.org,qa2@vh.org,qa3@vh.org');
+      // Kiểm tra nhận diện dòng trống nhanh: 500+ dòng trống không kích hoạt RPC isRowHidden
+      expect(mockSheet.isRowHiddenByFilter).toHaveBeenCalledTimes(3); // sampleRow + 2 dòng Email test có '@'
+    });
+
+    test('sendMergeEmailsFromDraft (gửi thật & hẹn giờ) tuyệt đối KHÔNG gộp cột Email test vào CC', () => {
+      const data = [
+        ['Họ tên', 'Email', 'CC', 'Email test', 'Status'],
+        ['Minh', 'minh@real.com', 'lead@vh.org', 'qa1@vh.org, qa2@vh.org', ''],
+        ['Lan', 'lan@real.com', '', 'qa3@vh.org', '']
+      ];
+
+      const mockSheet = {
+        getName: () => 'RealTab',
+        getDataRange: () => ({ getValues: () => data }),
+        getRange: () => ({ setValue: jest.fn(), getValue: () => '' }),
+        isRowHiddenByFilter: () => false,
+        isRowHiddenByUser: () => false
+      };
+      const sendEmailMock = jest.fn();
+
+      global.SpreadsheetApp = {
+        getActiveSpreadsheet: () => ({
+          getSheetByName: (name) => (name === 'RealTab' ? mockSheet : null)
+        }),
+        flush: jest.fn()
+      };
+      global.Utilities = { sleep: jest.fn() };
+      global.GmailApp = {
+        getDrafts: () => [
+          {
+            getMessage: () => ({
+              getSubject: () => 'Chiến dịch thật',
+              getBody: () => '<p>Chào {{ten}}</p>',
+              getCc: () => 'draftcc@vh.org',
+              getBcc: () => '',
+              getAttachments: () => []
+            })
+          }
+        ],
+        sendEmail: sendEmailMock
+      };
+
+      const res = mailMergePro.sendMergeEmailsFromDraft({
+        sheetName: 'RealTab',
+        draftSubject: 'Chiến dịch thật',
+        senderName: 'VietHope',
+        colName: 1,
+        colEmail: 2,
+        colCc: 3,
+        colTestEmail: 4, // dù truyền sẵn từ Sidebar cũng phải bị bỏ qua hoàn toàn
+        statusName: 'Status',
+        enableTracking: false,
+        delayTime: 0.5
+      });
+
+      expect(res).toContain('2 email');
+      expect(sendEmailMock).toHaveBeenCalledTimes(2);
+      expect(sendEmailMock.mock.calls[0][3].cc).toBe('draftcc@vh.org,lead@vh.org');
+      expect(sendEmailMock.mock.calls[1][3].cc).toBe('draftcc@vh.org');
+      expect(sendEmailMock.mock.calls[0][3].cc).not.toContain('qa1@vh.org');
+      expect(sendEmailMock.mock.calls[1][3].cc).not.toContain('qa3@vh.org');
+    });
+  });
+
+  // =========================================================================
+  // 12. Kiểm tra Preview Siêu Nhanh, Nhảy Tùy Ý & Bảo Toàn Dữ Liệu
+  // =========================================================================
+  describe('12. Fast Client-Side Preview & Arbitrary Recipient Navigation (PreviewLogic.js + Preview.html)', () => {
+    const previewLogic = require('../src/PreviewLogic.js');
+    const fs = require('fs');
+    const path = require('path');
+    const vm = require('vm');
+
+    let origSpreadsheetApp;
+    let origGmailApp;
+    let origCacheService;
+    let origSession;
+    let origUtilities;
+
+    beforeEach(() => {
+      origSpreadsheetApp = global.SpreadsheetApp;
+      origGmailApp = global.GmailApp;
+      origCacheService = global.CacheService;
+      origSession = global.Session;
+      origUtilities = global.Utilities;
+    });
+
+    afterEach(() => {
+      global.SpreadsheetApp = origSpreadsheetApp;
+      global.GmailApp = origGmailApp;
+      global.CacheService = origCacheService;
+      global.Session = origSession;
+      global.Utilities = origUtilities;
+    });
+
+    test('extractEligiblePreviewRows bỏ qua dòng trống/Đã gửi trên RAM và không gọi isRowHiddenByFilter khi Sheet không có Filter', () => {
+      const data = [
+        ['Họ tên', 'Email', 'Status'],
+        ['An', 'an@vh.org', ''],
+        ['', '', ''], // trống
+        ['Bình', 'binh@vh.org', 'Đã gửi'], // đã gửi
+        ['Chi', 'chi@vh.org', ''],
+        ['Ẩn tay', 'hidden@vh.org', '']
+      ];
+      for (let r = 0; r < 500; r++) {
+        data.push(['', '', '']);
+      }
+
+      const sheetNoFilter = {
+        getFilter: jest.fn(() => null),
+        isRowHiddenByFilter: jest.fn(() => false),
+        isRowHiddenByUser: jest.fn((rowNum) => rowNum === 6)
+      };
+
+      const resNoFilter = previewLogic.extractEligiblePreviewRows(sheetNoFilter, data, {
+        colName: 1,
+        colEmail: 2,
+        statusName: 'Status'
+      });
+
+      expect(resNoFilter.hiddenCheckDeferred).toBe(false);
+      expect(resNoFilter.validIndices).toEqual([1, 4]);
+      expect(resNoFilter.rows.map(x => ({ r: x.r, to: x.to, n: x.n }))).toEqual([
+        { r: 2, to: 'an@vh.org', n: 'An' },
+        { r: 5, to: 'chi@vh.org', n: 'Chi' }
+      ]);
+      // Không bật Filter -> 0 lần gọi isRowHiddenByFilter; chỉ 3 ứng viên RAM -> 3 lần isRowHiddenByUser
+      expect(sheetNoFilter.isRowHiddenByFilter).toHaveBeenCalledTimes(0);
+      expect(sheetNoFilter.isRowHiddenByUser).toHaveBeenCalledTimes(3);
+
+      // Khi Sheet CÓ Filter -> vẫn lọc đúng các dòng ẩn bởi Filter
+      const sheetWithFilter = {
+        getFilter: jest.fn(() => ({})),
+        isRowHiddenByFilter: jest.fn((rowNum) => rowNum === 5),
+        isRowHiddenByUser: jest.fn(() => false)
+      };
+      const resFiltered = previewLogic.extractEligiblePreviewRows(sheetWithFilter, data, {
+        colName: 1,
+        colEmail: 2,
+        statusName: 'Status'
+      });
+      expect(resFiltered.validIndices).toEqual([1, 5]);
+      expect(sheetWithFilter.isRowHiddenByFilter).toHaveBeenCalledTimes(3);
+    });
+
+    test('extractEligiblePreviewRows bật chế độ tải nhanh khi danh sách > 150 dòng và chuyển Date thành chuỗi an toàn', () => {
+      const data = [['Họ tên', 'Email', 'Hạn chót']];
+      const deadline = new Date('2026-12-01T10:00:00Z');
+      for (let i = 1; i <= 260; i++) {
+        data.push([`Sinh viên ${i}`, `sv${i}@vh.org`, deadline]);
+      }
+      for (let r = 0; r < 1000; r++) {
+        data.push(['', '', '']);
+      }
+
+      const mockSheet = {
+        getFilter: jest.fn(() => ({})),
+        isRowHiddenByFilter: jest.fn(() => false),
+        isRowHiddenByUser: jest.fn(() => false)
+      };
+
+      const res = previewLogic.extractEligiblePreviewRows(mockSheet, data, {
+        colName: 1,
+        colEmail: 2,
+        colOther1: 3
+      });
+
+      expect(res.hiddenCheckDeferred).toBe(true);
+      expect(res.rows).toHaveLength(260);
+      expect(mockSheet.isRowHiddenByFilter).not.toHaveBeenCalled();
+      expect(mockSheet.isRowHiddenByUser).not.toHaveBeenCalled();
+      expect(typeof res.rows[0].o[1]).toBe('string');
+      expect(res.rows[0].o[1] instanceof Date).toBe(false);
+    });
+
+    test('getPreviewInitialization đóng gói 1 lần HTML + Base64 + rows, thoát $ trong text và giữ tương thích getSinglePreviewHtml', () => {
+      const cacheStore = {
+        PREVIEW_CONFIG: JSON.stringify({
+          sheetName: 'DS',
+          draftSubject: 'Thư mời',
+          senderName: 'VietHope',
+          colName: 1,
+          colEmail: 2,
+          colLink: 3,
+          colAttachment: 4,
+          colCc: 5,
+          colOther1: 6,
+          statusName: 'Status'
+        })
+      };
+      const mockCache = {
+        get: (k) => cacheStore[k] || null,
+        getAll: (keys) => Object.fromEntries(keys.map(k => [k, cacheStore[k]])),
+        put: (k, v) => { cacheStore[k] = v; },
+        putAll: (obj) => { Object.assign(cacheStore, obj); }
+      };
+
+      const data = [
+        ['Họ tên', 'Email', 'Link', 'Đính kèm', 'CC', 'Học bổng'],
+        ['Minh', 'minh@vh.org', 'https://vh.org/1', 'https://drive.google.com/file/d/111111111111111111111111111111111/view', 'cc1@vh.org', '$1000'],
+        ['Lan', 'lan@vh.org', 'https://vh.org/2', '', '', '$500']
+      ];
+
+      global.CacheService = { getUserCache: () => mockCache };
+      global.Session = { getActiveUser: () => ({ getEmail: () => 'sender@vh.org' }) };
+      global.Utilities = { base64Encode: () => 'AQID' };
+      global.SpreadsheetApp = {
+        getActiveSpreadsheet: () => ({
+          getSheetByName: (name) => (name === 'DS' ? {
+            getFilter: () => null,
+            isRowHiddenByFilter: () => false,
+            isRowHiddenByUser: () => false,
+            getDataRange: () => ({ getValues: () => data })
+          } : null)
+        })
+      };
+      global.GmailApp = {
+        getDrafts: () => [
+          {
+            getMessage: () => ({
+              getSubject: () => 'Thư mời',
+              getBody: () => '<p>Chào {{ten}} nhận {{other1}} <a href="http://{{link}}">Xem</a> <img src="cid:logo1"></p>',
+              getRawContent: () => 'Content-ID: <logo1>',
+              getCc: () => 'draftcc@vh.org',
+              getBcc: () => '',
+              getAttachments: (opts) => {
+                if (opts && opts.includeInlineImages && !opts.includeAttachments) {
+                  return [{ copyBlob: () => ({ getBytes: () => [1, 2, 3], getContentType: () => 'image/png' }) }];
+                }
+                if (opts && !opts.includeInlineImages && opts.includeAttachments) {
+                  return [{ getName: () => 'HuongDan<v1>.pdf' }];
+                }
+                return [];
+              }
+            })
+          }
+        ]
+      };
+
+      const init = previewLogic.getPreviewInitialization();
+      expect(init.rows).toHaveLength(2);
+      expect(init.template.from).toBe('VietHope <sender@vh.org>');
+      expect(init.template.htmlTemplate).toContain('data:image/png;base64,AQID');
+      expect(init.template.attNames[0]).toContain('HuongDan&lt;v1&gt;.pdf');
+      expect(init.rows[0].o[1]).toBe('$1000');
+
+      const merged = previewLogic.applyPreviewMergeTags(init.template.htmlTemplate, init.rows[0]);
+      expect(merged).toContain('Chào Minh nhận $1000');
+      expect(merged).toContain('href="https://vh.org/1"');
+
+      // Kiểm tra tương thích ngược getSinglePreviewHtml
+      const single = previewLogic.getSinglePreviewHtml(1, JSON.parse(cacheStore.PREVIEW_CONFIG));
+      expect(single.to).toBe('minh@vh.org');
+      expect(single.cc).toBe('draftcc@vh.org, cc1@vh.org');
+      expect(single.htmlBody).toContain('Chào Minh nhận $1000');
+      expect(single.attachments).toContain('Đính kèm thêm 1 tệp từ Drive');
+    });
+
+    test('Script phía Client trong Preview.html lọc tìm kiếm theo tên/email/#chỉ số/dòng và render thẻ chính xác', () => {
+      const htmlPath = path.join(__dirname, '..', 'src', 'Preview.html');
+      const htmlContent = fs.readFileSync(htmlPath, 'utf8');
+      const scriptMatch = htmlContent.match(/<script>([\s\S]*?)<\/script>/);
+      expect(scriptMatch).not.toBeNull();
+
+      const sandbox = {
+        document: {
+          addEventListener: jest.fn(),
+          getElementById: () => ({ style: {}, value: '' })
+        },
+        window: {},
+        google: { script: { run: {} } }
+      };
+      const ctx = vm.createContext(sandbox);
+      vm.runInContext(scriptMatch[1], ctx);
+      vm.runInContext(`previewRows = ${JSON.stringify([
+        { idx: 1, r: 2, to: 'an@vh.org', n: 'Nguyễn An' },
+        { idx: 4, r: 5, to: 'minh@gmail.com', n: 'Trần Minh', l: 'https://vh.org/m', o: { 1: '$200' } },
+        { idx: 24, r: 25, to: 'linh@vh.org', n: 'Lê Linh' }
+      ])};`, ctx);
+
+      expect(ctx.computeFilteredIndices('minh')).toEqual([1]);
+      expect(ctx.computeFilteredIndices('d25')).toEqual([2]);
+      expect(ctx.computeFilteredIndices('#1')).toEqual([0]);
+      expect(ctx.computeFilteredIndices('@vh.org')).toEqual([0, 2]);
+      expect(ctx.computeFilteredIndices('khongtontai')).toEqual([]);
+
+      const rendered = ctx.applyClientMergeTags(
+        'Xin chào {{ten}} - {{other1}} - https://{{link}}',
+        JSON.parse(vm.runInContext('JSON.stringify(previewRows[1])', ctx))
+      );
+      expect(rendered).toBe('Xin chào Trần Minh - $200 - https://vh.org/m');
     });
   });
 
